@@ -76,7 +76,10 @@ public class DesktopAppTests : IAsyncLifetime
 
         var (code, body) = await _admin.JsonAsync(HttpMethod.Post, "/admin/api/addon/install");
         Assert.Equal(422, code);
-        Assert.Contains("Thunderbird", body!["messages"]!.ToJsonString(new System.Text.Json.JsonSerializerOptions { Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping }));
+        // No Thunderbird here, and depending on the build order the XPI may not be packaged yet: either is explained.
+        var messages = body!["messages"]!.ToJsonString(new System.Text.Json.JsonSerializerOptions { Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping });
+        Assert.True(messages.Contains("Thunderbird") || messages.Contains("add-on csomag"), messages);
+        Assert.False(body["ok"]!.GetValue<bool>());
     }
 
     [Theory]
