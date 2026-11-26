@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http.Json;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.OpenApi;
 using Serilog;
@@ -24,6 +25,10 @@ public static class ApiHost
             ContentRootPath = AppContext.BaseDirectory,
             Args = [],
         });
+
+        // Started by the Service Control Manager: Windows Service lifetime (no-op when run from a console).
+        builder.Services.AddWindowsService(options => options.ServiceName = Service.ServiceManager.ServiceName);
+        builder.Services.Configure<HostOptions>(options => options.ShutdownTimeout = TimeSpan.FromSeconds(30));
 
         builder.Logging.ClearProviders();
         builder.Logging.AddSerilog(serilog, dispose: false);

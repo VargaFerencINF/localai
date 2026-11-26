@@ -8,8 +8,8 @@
 | 4 | Thunderbird add-on | **done** |
 | 5 | Add-on installation from the exe | **done** |
 | 6 | Admin UI | **done** |
-| 7 | Windows Service and installer | next |
-| 8 | End-to-end test, hardening, user guide | |
+| 7 | Windows Service and installer | **done** |
+| 8 | End-to-end test, hardening, user guide | next |
 
 ---
 
@@ -256,3 +256,31 @@
 
 ### Notes for the next step
 - Decisions D-601..D-608. Step 7 should mention the admin URL on the installer's final page.
+
+---
+
+## Step 7: Windows Service and installer (done, 2026-11-26)
+
+### What exists
+- Windows Service lifetime in the normal host (`AddWindowsService`), graceful 30 s shutdown.
+- `src/EfMailAgent/Service/ServiceManager.cs` + CLI: `install-service [--account] [--password] [--no-start]`,
+  `uninstall-service`, `stop-service`, `configure [--llm-provider] [--llm-base-url] [--llm-model] [--output]`,
+  `open-admin`.
+- `installer/EfMailAgent.iss`: Hungarian wizard (LLM server, model, output folder, service account), first install,
+  upgrade in place, uninstall with "keep data" default, unattended parameters.
+- `build.ps1`: clean, C# + Node tests, single-file exe, XPI, installer (`iscc`), optional signing; output
+  `dist\EfMailAgent.exe`, `dist\efmailagent.xpi`, `dist\EfMailAgent-Setup.exe`.
+- `scripts/set-version.mjs`: sets VERSION and the add-on manifest together.
+- Tests: service registration arguments (new, upgrade keeps account, custom account + ACL, masked password on error,
+  uninstall), account names, `configure` (first run, upgrade keeps token, invalid value refused).
+- CI (Windows): Inno Setup via Chocolatey, `build.ps1` builds the installer; silent install -> service / health /
+  admin checks -> upgrade to 99.0.0 keeps token, rules and output -> silent uninstall keeps data.
+
+### Verification
+- `dotnet test`: **285 passed**; Node tests 84 passed; e2e simulation passed (sandbox).
+- Inno Setup, the service and the installer can only run on Windows: verified by the Windows CI job (see D-706);
+  the interactive checks are in `docs/WINDOWS_ACCEPTANCE.md`.
+
+### Notes for the next step
+- Decisions D-701..D-706. Step 8: user guide (installer screens, unattended parameters, service account and network
+  share notes), hardening and the final review.

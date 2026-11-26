@@ -523,5 +523,56 @@ overview, job drawer, rule editor with an invalid save, prompt change + Tesztkon
 page, dark mode at phone width. Browser tests are not part of CI (no browser install there); the admin API is covered
 by xUnit tests.
 
+## Step 7
+
+### D-701 Service hosting
+`AddWindowsService` (Microsoft.Extensions.Hosting.WindowsServices) is part of the normal host: started by the Service
+Control Manager the exe runs as the service "EfMailAgent", started from a console it runs as before. Shutdown
+timeout 30 s; the running job is put back to the queue on stop (D-207). A start failure (e.g. port taken) ends the
+process with a non-zero exit code, which the recovery settings below turn into a restart.
+
+### D-702 Service registration from the exe
+`install-service` uses `sc.exe` (create or config, `start= delayed-auto`, display name "EfMailAgent e-mail AI
+feldolgozó", description, `failure ... actions= restart/60000/restart/60000/restart/60000` with `reset= 86400`, and
+`failureflag 1` so non-crash failures also count) and `ServiceController` to start / stop / wait. Without `--account`
+a new service runs as LocalSystem and an existing one keeps its account (upgrade). With `--account` the account
+gets modify rights on the data folder (`icacls ... (OI)(CI)M /T`); `user` means a local account (`.\user`). The
+password is masked in error messages. Other commands for the installer: `stop-service`, `uninstall-service`,
+`configure` (creates the data folder, token and sample rules like any first run, then sets only the given LLM /
+output values, validated, keeps `.bak`), `open-admin`.
+
+### D-703 Installer behaviour
+- Inno Setup 6 with the official `Hungarian.isl`; per-machine, admin, x64, Windows 10+.
+- Installs to `Program Files\EfMailAgent`: `EfMailAgent.exe`, `efmailagent.xpi`, `samples\rules` (copied into the
+  data folder by the exe only when its rules folder is empty) and `samples\emails` (for the Tesztkonzol).
+- Wizard pages: LLM server type, URL and model; CSV output folder; service account (empty = LocalSystem, with a note
+  about network shares). Every value can also be passed for unattended installs: `/LLMPROVIDER= /LLMURL= /LLMMODEL=
+  /OUTPUT= /ACCOUNT=` (no password parameter: an account install with password is interactive).
+- After copying: `configure` (first install with the wizard values; upgrade without values, so nothing changes),
+  `install-service` (creates or reconfigures and starts it), `install-addon` (a missing Thunderbird is reported on
+  the final page, not a failure). The final page shows the admin URL, how to get the token, the Thunderbird restart
+  note and any problems; "Az admin felület megnyitása" opens the browser as the original user.
+- Upgrade: detected by an existing `ProgramData\EfMailAgent\appsettings.json`; the configuration pages are skipped,
+  the service is stopped before the files are replaced (`stop-service` in PrepareToInstall), token, settings, rules
+  and output are never touched.
+- Uninstall: `uninstall-addon`, `uninstall-service`, then a question (default and silent answer: No) whether to delete
+  `ProgramData\EfMailAgent`. A CSV folder outside it is never deleted.
+
+### D-704 Version handling
+`VERSION` is the single source: assembly versions (Directory.Build.props), the installer (`/DAppVersion` from
+build.ps1, or read from the file by the .iss itself), and the add-on manifest, which `scripts/set-version.mjs` keeps
+in sync (the packager and a Node test refuse a mismatch).
+
+### D-705 Code signing (optional)
+`build.ps1 -Sign -CertificateThumbprint <sha1> [-TimestampUrl <url>]` signs `EfMailAgent.exe` before it is packed and
+`EfMailAgent-Setup.exe` afterwards with `signtool` (SHA-256, RFC 3161 timestamp). Unsigned builds work but can
+trigger SmartScreen or antivirus warnings on first run.
+
+### D-706 Installer tested in CI
+The Windows job installs the built setup silently, checks the running delayed-auto service with restart recovery,
+the health endpoint and the admin page, then builds the same binaries as version 99.0.0, upgrades over a locally
+modified rule and an existing CSV (both must survive, the token must not change), and finally uninstalls silently
+(service and program files gone, data kept). A real interactive run on a clean machine stays in the acceptance list.
+
 ## Planned for later steps (decided now, implemented later)
 

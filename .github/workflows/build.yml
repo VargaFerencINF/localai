@@ -75,7 +75,10 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: 22
-      - name: Build (build.ps1 - tests, XPI, single-file exe)
+      - name: Install Inno Setup 6
+        shell: pwsh
+        run: choco install innosetup -y --no-progress
+      - name: Build (build.ps1 - tests, XPI, single-file exe, installer)
         shell: pwsh
         run: ./build.ps1
       - name: End-to-end simulation (exe + simulated Thunderbird)
@@ -169,6 +172,78 @@ jobs:
           if ($p.policies.ExtensionSettings -or $p.policies.'3rdparty'.Extensions.'efmailagent@energofish.hu') { throw "our entries were not removed" }
           if ($p.policies.DisableAppUpdate -ne $true -or $p.policies.'3rdparty'.Extensions.'other@x'.a -ne 1) { throw "uninstall removed unrelated keys" }
           Write-Host "Add-on installation smoke test OK"
+      - name: Installer - silent install, upgrade to a higher version, uninstall
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $data = 'C:\ProgramData\EfMailAgent'
+          $app = "$env:ProgramFiles\EfMailAgent"
+          function Install($setup, $log) {
+            $p = Start-Process $setup -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', "/LOG=$log" -Wait -PassThru
+            if ($p.ExitCode -ne 0) { Get-Content $log -Tail 60; throw "setup exit code $($p.ExitCode)" }
+          }
+          function Wait-Health() {
+            $token = (Get-Content "$data\appsettings.json" -Raw | ConvertFrom-Json).Server.Token
+            for ($i = 0; $i -lt 60; $i++) {
+              try { return Invoke-RestMethod -Uri 'http://127.0.0.1:47811/api/health' -Headers @{ 'X-EfMailAgent-Token' = $token } } catch { Start-Sleep 1 }
+            }
+            Get-ChildItem "$data\logs" -ErrorAction SilentlyContinue | ForEach-Object { Get-Content $_.FullName -Tail 40 }
+            throw 'the service API did not answer'
+          }
+
+          # 1. First install (silent: LocalSystem, Ollama at the default URL, no model)
+          Install (Resolve-Path dist/EfMailAgent-Setup.exe) "$env:RUNNER_TEMP\setup-install.log"
+          $service = Get-Service EfMailAgent
+          if ($service.Status -ne 'Running') { throw "service status: $($service.Status)" }
+          if ($service.StartType -notin @('Automatic', 'AutomaticDelayedStart')) { throw "start type: $($service.StartType)" }
+          sc.exe qc EfMailAgent | Out-String | Write-Host
+          if (-not ((sc.exe qc EfMailAgent | Out-String) -match 'DELAYED')) { throw 'service is not delayed-auto' }
+          if (-not ((sc.exe qfailure EfMailAgent | Out-String) -match 'RESTART')) { throw 'no restart recovery action' }
+          $health = Wait-Health
+          Write-Host "health: $($health | ConvertTo-Json -Compress)"
+          if ($health.version -ne (Get-Content VERSION -Raw).Trim()) { throw "unexpected version $($health.version)" }
+          if ((Invoke-WebRequest 'http://127.0.0.1:47811/admin/' -UseBasicParsing).StatusCode -ne 200) { throw 'admin UI not served' }
+          if (-not (Test-Path "$data\rules\eloreendeles\rule.yaml")) { throw 'sample rules were not copied' }
+          $settings = Get-Content "$data\appsettings.json" -Raw | ConvertFrom-Json
+          if ($settings.Llm.Provider -ne 'ollama' -or $settings.Server.Token.Length -ne 43) { throw 'unexpected appsettings.json' }
+
+          # 2. Local changes that an upgrade must keep
+          $token = $settings.Server.Token
+          Add-Content "$data\rules\eloreendeles\prompt.md" "`n- Helyi módosítás, frissítéskor meg kell maradnia."
+          Set-Content "$data\output\meglevo.csv" 'meglevo'
+          $promptBefore = Get-Content "$data\rules\eloreendeles\prompt.md" -Raw
+
+          # 3. Upgrade with a higher version (same binaries, installer version 99.0.0)
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          New-Item -ItemType Directory -Force "$env:RUNNER_TEMP\upgrade" | Out-Null
+          Copy-Item dist\EfMailAgent.exe, dist\efmailagent.xpi "$env:RUNNER_TEMP\upgrade"
+          & $iscc /Q /DAppVersion=99.0.0 "/DDistDir=$env:RUNNER_TEMP\upgrade" "/DRepoDir=$PWD" installer\EfMailAgent.iss
+          if ($LASTEXITCODE -ne 0) { throw 'iscc (upgrade build) failed' }
+          Install "$env:RUNNER_TEMP\upgrade\EfMailAgent-Setup.exe" "$env:RUNNER_TEMP\setup-upgrade.log"
+          if ((Get-Service EfMailAgent).Status -ne 'Running') { throw 'service not running after upgrade' }
+          Wait-Health | Out-Null
+          if ((Get-Content "$data\appsettings.json" -Raw | ConvertFrom-Json).Server.Token -ne $token) { throw 'token changed on upgrade' }
+          if ((Get-Content "$data\rules\eloreendeles\prompt.md" -Raw) -ne $promptBefore) { throw 'rules were overwritten on upgrade' }
+          if (-not (Test-Path "$data\output\meglevo.csv")) { throw 'output was touched on upgrade' }
+          $version = (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{7E3C6A52-9C1B-4F4B-9E0A-3B5D2C8F1A71}_is1').DisplayVersion
+          if ($version -ne '99.0.0') { throw "installed version after upgrade: $version" }
+
+          # 4. Uninstall (silent: data is kept)
+          $p = Start-Process "$app\unins000.exe" -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART' -Wait -PassThru
+          for ($i = 0; $i -lt 60 -and (Test-Path "$app\EfMailAgent.exe"); $i++) { Start-Sleep 1 }
+          if (Get-Service EfMailAgent -ErrorAction SilentlyContinue) { throw 'service still exists after uninstall' }
+          if (Test-Path "$app\EfMailAgent.exe") { throw 'program files still present' }
+          if (-not (Test-Path "$data\appsettings.json")) { throw 'data folder was deleted although the default is to keep it' }
+          Write-Host 'Installer test OK'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: installer-logs
+          path: ${{ runner.temp }}/setup-*.log
+      - uses: actions/upload-artifact@v4
+        with:
+          name: EfMailAgent-Setup
+          path: dist/EfMailAgent-Setup.exe
       - uses: actions/upload-artifact@v4
         with:
           name: EfMailAgent-win-x64

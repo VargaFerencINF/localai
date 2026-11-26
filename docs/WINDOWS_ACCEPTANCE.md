@@ -111,3 +111,24 @@ A `dist\EfMailAgent.exe` és a `dist\efmailagent.xpi` legyen egy mappában.
       feladat már az új modellel fut (újraindítás nélkül).
 - [ ] Napló: a friss sorok látszanak, a szintszűrő működik.
 - [ ] Egy másik gépről a `http://<szerver>:47811/admin` nem érhető el.
+
+## 7. lépés: Windows szolgáltatás és telepítő
+
+A telepítő a CI futás `EfMailAgent-Setup` artefaktja (vagy `.\build.ps1` -> `dist\EfMailAgent-Setup.exe`).
+
+- [ ] Tiszta gépen (vagy VM-en) a `EfMailAgent-Setup.exe` magyar varázslóval települ: AI szerver címe és modell,
+      CSV mappa, szolgáltatásfiók oldal.
+- [ ] A végén: a szolgáltatás fut (Szolgáltatások: „EfMailAgent e-mail AI feldolgozó”, Automatikus (késleltetett
+      indítás), Helyreállítás: újraindítás 1 perc múlva), a záró oldalon az admin cím és a Thunderbird-újraindítás
+      szövege látszik, az „Az admin felület megnyitása” bejelölve megnyitja a böngészőt.
+- [ ] A Thunderbird újraindítása után az add-on telepítve és beállítva (a telepítő futtatta az install-addon-t).
+- [ ] Szolgáltatásfiókként egy tartományi felhasználót megadva és a CSV mappát hálózati megosztásra állítva a CSV a
+      megosztásra íródik; a fióknak módosítási joga van a `C:\ProgramData\EfMailAgent` mappán.
+- [ ] A szolgáltatás leállítása feldolgozás közben (valódi Ollamával): a feladat a sorba kerül vissza, és az
+      újraindítás után feldolgozódik.
+- [ ] Frissítés: magasabb `VERSION`-nel épített telepítő futtatása -> nem kérdez újra beállításokat, a szabályok, a
+      promptok, a token és a CSV kimenet változatlan, a szolgáltatás az új verzióval fut, a Thunderbird újraindítása
+      után az új add-on verzió települ.
+- [ ] Eltávolítás (Gépház > Alkalmazások): rákérdez az adatok törlésére (alapból Nem); a szolgáltatás és a
+      policies.json bejegyzés eltűnik, a `C:\ProgramData\EfMailAgent` megmarad.
+- [ ] Aláíratlan exe esetén a SmartScreen / vírusirtó viselkedése (ha gond van: `build.ps1 -Sign`, D-705).
