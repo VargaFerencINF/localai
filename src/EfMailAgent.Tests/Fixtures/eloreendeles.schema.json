@@ -1,0 +1,31 @@
+{
+  "type": "object",
+  "properties": {
+    "rows": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "partner_nev": { "type": "string", "description": "A partner (vevő) neve, ahogy az e-mailben szerepel" },
+          "partner_kod": { "type": ["string", "null"], "description": "Partnerkód, ha a partnerlistából egyértelműen azonosítható, különben üres" },
+          "cikk_megnevezes": { "type": "string", "description": "A kért termék megnevezése" },
+          "cikkszam": { "type": ["string", "null"], "description": "Cikkszám, ha az e-mailben szerepel" },
+          "mennyiseg": { "type": "number", "description": "Kért mennyiség számként" },
+          "mennyisegi_egyseg": { "type": ["string", "null"], "description": "db, doboz, csomag, kg stb." },
+          "egysegar": { "type": ["number", "null"], "description": "Egységár számként, ha szerepel az e-mailben" },
+          "penznem": { "type": ["string", "null"], "description": "Pénznem ISO kóddal (HUF, EUR, RON), ha van egységár" },
+          "kert_szallitasi_datum": { "type": ["string", "null"], "format": "date", "description": "ÉÉÉÉ-HH-NN, ha szerepel" },
+          "megjegyzes": { "type": ["string", "null"], "description": "Minden egyéb releváns információ" },
+          "bizonyossag": { "type": "string", "enum": ["magas", "kozepes", "alacsony"], "description": "Mennyire biztos a sor helyessége" }
+        },
+        "required": [
+          "partner_nev", "partner_kod", "cikk_megnevezes", "cikkszam", "mennyiseg", "mennyisegi_egyseg",
+          "egysegar", "penznem", "kert_szallitasi_datum", "megjegyzes", "bizonyossag"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": ["rows"],
+  "additionalProperties": false
+}

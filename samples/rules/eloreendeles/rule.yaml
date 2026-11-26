@@ -1,0 +1,31 @@
+id: eloreendeles
+name: Előrendelés feldolgozás
+enabled: true
+priority: 10                 # lower number wins when several rules match
+match:
+  subject_contains: ["előrendelés", "elorendeles", "pre-order"]
+  subject_regex: null        # optional, applied to the normalized subject
+prompt_file: prompt.md
+skills:                      # optional extra instruction / reference files, appended in order
+  - skills/mertekegysegek.md
+  - skills/partnerek.md
+output:
+  mode: append               # append = one growing file, per_job = one file per email
+  file: "eloreendeles_{yyyy}-{MM}.csv"
+  rows_path: rows            # the model returns { "rows": [ ... ] }
+  columns:
+    - { name: partner_nev,          type: string, required: true,  description: "A partner (vevő) neve, ahogy az e-mailben szerepel" }
+    - { name: partner_kod,          type: string, required: false, description: "Partnerkód, ha a partnerlistából egyértelműen azonosítható, különben üres" }
+    - { name: cikk_megnevezes,      type: string, required: true,  description: "A kért termék megnevezése" }
+    - { name: cikkszam,             type: string, required: false, description: "Cikkszám, ha az e-mailben szerepel" }
+    - { name: mennyiseg,            type: number, required: true,  description: "Kért mennyiség számként" }
+    - { name: mennyisegi_egyseg,    type: string, required: false, description: "db, doboz, csomag, kg stb." }
+    - { name: egysegar,             type: number, required: false, description: "Egységár számként, ha szerepel az e-mailben" }
+    - { name: penznem,              type: string, required: false, description: "Pénznem ISO kóddal (HUF, EUR, RON), ha van egységár" }
+    - { name: kert_szallitasi_datum, type: date,  required: false, description: "ÉÉÉÉ-HH-NN, ha szerepel" }
+    - { name: megjegyzes,           type: string, required: false, description: "Minden egyéb releváns információ" }
+    - { name: bizonyossag,          type: enum, values: [magas, kozepes, alacsony], required: true, description: "Mennyire biztos a sor helyessége" }
+llm:                         # optional per-rule overrides of appsettings
+  model: null
+  temperature: 0
+  max_body_chars: 20000

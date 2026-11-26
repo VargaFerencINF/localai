@@ -1,0 +1,16 @@
+<Project>
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <EfVersion>$([System.IO.File]::ReadAllText('$(MSBuildThisFileDirectory)VERSION').Trim())</EfVersion>
+    <Version>$(EfVersion)</Version>
+    <AssemblyVersion>$(EfVersion).0</AssemblyVersion>
+    <FileVersion>$(EfVersion).0</FileVersion>
+    <InformationalVersion>$(EfVersion)</InformationalVersion>
+    <Company>Energofish</Company>
+    <Product>EfMailAgent</Product>
+  </PropertyGroup>
+</Project>

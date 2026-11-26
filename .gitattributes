@@ -1,0 +1,16 @@
+* text=auto eol=lf
+
+# Windows-native files
+*.sln text eol=crlf
+*.ps1 text eol=crlf
+*.iss text eol=crlf
+*.cmd text eol=crlf
+*.bat text eol=crlf
+
+# Byte-exact fixtures: never touch line endings or BOM
+*.eml -text
+samples/expected/*.csv -text
+
+*.png binary
+*.ico binary
+*.xpi binary

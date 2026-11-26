@@ -1,0 +1,30 @@
+Sziasztok, mellékelve a Csalihalász rendelése táblázatban, kérlek rögzítsétek.
+Gergő
+
+-------- Továbbított üzenet --------
+Tárgy: 	Előrendelési lista – Csalihalász Kft.
+Dátum: 	2026. 11. 22. 10:03
+Feladó: 	Varga Erika <varga.erika@csalihalasz.example>
+Címzett: 	Horváth Gergő <horvath.gergo@ertekesites.example>
+
+
+
+Tisztelt Horváth Úr!
+
+Az előzetes egyeztetés alapján küldjük a tavaszi előrendelésünket:
+
+Cikkszám    | Megnevezés                         | Menny. | Egység | Egységár (nettó)
+------------+------------------------------------+--------+--------+-----------------
+EF-B3600    | Feeder bot 3,6 m 120 g             |     12 | db     | 18 500 Ft
+EF-Z0250    | Monofil zsinór 0,25 mm 150 m       |     60 | tekercs| 2 490 Ft
+EF-H1042    | Horog 12-es                        |     40 | csomag | 690 Ft
+EF-K0030    | Etetőkosár 30 g                    |    100 | db     | 350 Ft
+            | Haltartó szák 3 m                  |      8 | db     | egyeztetés szerint
+
+Kért szállítási határidő: 2027. február 20.
+Fizetés: átutalás, 30 nap.
+
+Tisztelettel:
+Varga Erika
+beszerzési vezető
+Csalihalász Kft.

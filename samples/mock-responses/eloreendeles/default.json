@@ -1,0 +1,69 @@
+{
+  "rows": [
+    {
+      "partner_nev": "Horgász Centrum Kft.",
+      "partner_kod": null,
+      "cikk_megnevezes": "Feeder bot 3,6 m, 120 g",
+      "cikkszam": null,
+      "mennyiseg": 10,
+      "mennyisegi_egyseg": "db",
+      "egysegar": 18500,
+      "penznem": "HUF",
+      "kert_szallitasi_datum": null,
+      "megjegyzes": "Szállítás: március eleje",
+      "bizonyossag": "magas"
+    },
+    {
+      "partner_nev": "Horgász Centrum Kft.",
+      "partner_kod": null,
+      "cikk_megnevezes": "Monofil zsinór 0,25 mm, 150 m",
+      "cikkszam": null,
+      "mennyiseg": 40,
+      "mennyisegi_egyseg": "tekercs",
+      "egysegar": 2490,
+      "penznem": "HUF",
+      "kert_szallitasi_datum": null,
+      "megjegyzes": "Szállítás: március eleje",
+      "bizonyossag": "magas"
+    },
+    {
+      "partner_nev": "Horgász Centrum Kft.",
+      "partner_kod": null,
+      "cikk_megnevezes": "Horog, 12-es méret",
+      "cikkszam": "EF-H1042",
+      "mennyiseg": 25,
+      "mennyisegi_egyseg": "csomag",
+      "egysegar": null,
+      "penznem": null,
+      "kert_szallitasi_datum": null,
+      "megjegyzes": "Szállítás: március eleje",
+      "bizonyossag": "magas"
+    },
+    {
+      "partner_nev": "Horgász Centrum Kft.",
+      "partner_kod": null,
+      "cikk_megnevezes": "Etetőanyag ponty-vanília 1 kg",
+      "cikkszam": null,
+      "mennyiseg": 3,
+      "mennyisegi_egyseg": "karton",
+      "egysegar": null,
+      "penznem": null,
+      "kert_szallitasi_datum": null,
+      "megjegyzes": "Kartononként 12 db; ár: a szokásos; szállítás: március eleje",
+      "bizonyossag": "kozepes"
+    },
+    {
+      "partner_nev": "Horgász Centrum Kft.",
+      "partner_kod": null,
+      "cikk_megnevezes": "Feeder bot 3,9 m",
+      "cikkszam": null,
+      "mennyiseg": 5,
+      "mennyisegi_egyseg": "db",
+      "egysegar": null,
+      "penznem": null,
+      "kert_szallitasi_datum": null,
+      "megjegyzes": "Feltételes: csak ha elérhető, a partner szerint még nem biztos",
+      "bizonyossag": "alacsony"
+    }
+  ]
+}

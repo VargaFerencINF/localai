@@ -1,0 +1,70 @@
+name: build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_NOLOGO: "1"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+      - name: Restore
+        run: dotnet restore
+      - name: Build
+        run: dotnet build --no-restore -c Release
+      - name: Test
+        run: dotnet test --no-build -c Release --logger "trx;LogFileName=linux.trx" --results-directory TestResults
+      - name: Validate sample rules with the CLI
+        run: dotnet src/EfMailAgent/bin/Release/net10.0/EfMailAgent.dll validate-rules --data-dir "$RUNNER_TEMP/efdata"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results-linux
+          path: TestResults
+
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+      - name: Test
+        run: dotnet test -c Release --logger "trx;LogFileName=windows.trx" --results-directory TestResults
+      - name: Publish single-file exe
+        run: dotnet publish src/EfMailAgent -c Release -r win-x64 --self-contained -p:PublishSingleFile=true -o dist/win-x64
+      - name: Smoke test the exe
+        shell: pwsh
+        run: |
+          $exe = Resolve-Path dist/win-x64/EfMailAgent.exe
+          $data = Join-Path $env:RUNNER_TEMP 'efdata'
+          & $exe validate-rules --data-dir $data
+          if ($LASTEXITCODE -ne 0) { throw "validate-rules failed with exit code $LASTEXITCODE" }
+          $token = (& $exe print-token --data-dir $data | Out-String).Trim()
+          if ($LASTEXITCODE -ne 0 -or $token.Length -ne 43) { throw "print-token returned an invalid token" }
+          if (-not (Test-Path (Join-Path $data 'rules/eloreendeles/rule.yaml'))) { throw "sample rules were not copied" }
+          Write-Host "Smoke test OK"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: EfMailAgent-win-x64
+          path: dist/win-x64/EfMailAgent.exe
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results-windows
+          path: TestResults

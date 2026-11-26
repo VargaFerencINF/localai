@@ -1,0 +1,341 @@
+{
+  "description": "Shared test vectors for subject normalization and rule matching (CLAUDE.md section 6). Used by the C# tests (src/EfMailAgent.Tests) and the add-on's Node tests; both implementations must agree 100%.",
+  "normalize": [
+    {
+      "input": "Előrendelés",
+      "expected": "elorendeles",
+      "note": "Hungarian accents"
+    },
+    {
+      "input": "ELŐRENDELÉS – tavasz",
+      "expected": "elorendeles – tavasz",
+      "note": "uppercase accents, en dash kept"
+    },
+    {
+      "input": "Fwd: Re: TOV: Előrendelés",
+      "expected": "elorendeles",
+      "note": "nested forward/reply prefixes"
+    },
+    {
+      "input": "Fwd: Re: Fwd: Re: Fwd: Előrendelés",
+      "expected": "elorendeles",
+      "note": "deeply nested prefixes"
+    },
+    {
+      "input": "Re[2]: előrendelés",
+      "expected": "elorendeles",
+      "note": "numbered reply"
+    },
+    {
+      "input": "RE: RE: Re: Árajánlat",
+      "expected": "arajanlat",
+      "note": "repeated reply"
+    },
+    {
+      "input": "Továbbítás: Előrendelés Horgász Kft.",
+      "expected": "elorendeles horgasz kft.",
+      "note": "Hungarian forward word"
+    },
+    {
+      "input": "VÁ: Válasz: előrendelés",
+      "expected": "elorendeles",
+      "note": "Hungarian reply prefixes"
+    },
+    {
+      "input": "AW: WG: Pre-Order Q2",
+      "expected": "pre-order q2",
+      "note": "German prefixes"
+    },
+    {
+      "input": "FW: Előrendelés",
+      "expected": "elorendeles",
+      "note": "Outlook forward"
+    },
+    {
+      "input": "[EXT] Fwd: Előrendelés",
+      "expected": "elorendeles",
+      "note": "external tag"
+    },
+    {
+      "input": "[Külső] [EXT] TOV: előrendelés",
+      "expected": "elorendeles",
+      "note": "several tags"
+    },
+    {
+      "input": "TOV: [EXT] RE[3]: Előrendelés",
+      "expected": "elorendeles",
+      "note": "mixed tags and prefixes"
+    },
+    {
+      "input": "Fwd: [ticket #123] Előrendelés",
+      "expected": "elorendeles",
+      "note": "bracket tag after prefix"
+    },
+    {
+      "input": "RE:FW:TOV:előrendelés",
+      "expected": "elorendeles",
+      "note": "prefixes without spaces"
+    },
+    {
+      "input": "Fwd : Előrendelés",
+      "expected": "elorendeles",
+      "note": "space before colon"
+    },
+    {
+      "input": "Fwd (3): előrendelés",
+      "expected": "elorendeles",
+      "note": "numbered with parentheses"
+    },
+    {
+      "input": "   Előrendelés    tavaszi     szezonra  ",
+      "expected": "elorendeles tavaszi szezonra",
+      "note": "extra whitespace"
+    },
+    {
+      "input": "Előrendelés\ttab\nújsor\r\nvége",
+      "expected": "elorendeles tab ujsor vege",
+      "note": "tabs and line breaks"
+    },
+    {
+      "input": "Előrendelés\u00a0tavasz\u202f2027",
+      "expected": "elorendeles tavasz 2027",
+      "note": "non-breaking spaces"
+    },
+    {
+      "input": "Előrendelés\u3000x",
+      "expected": "elorendeles x",
+      "note": "ideographic space"
+    },
+    {
+      "input": "Elő\u200brende\u00adlés",
+      "expected": "elorendeles",
+      "note": "zero-width space and soft hyphen removed"
+    },
+    {
+      "input": "\ufeffFwd: Előrendelés",
+      "expected": "elorendeles",
+      "note": "BOM at start"
+    },
+    {
+      "input": "E\u0301lo\u030brendele\u0301s",
+      "expected": "elorendeles",
+      "note": "already decomposed input"
+    },
+    {
+      "input": "ŐŰÖÜÓÚÉÁÍ őűöüóúéáí",
+      "expected": "ouououeai ouououeai",
+      "note": "all Hungarian accented letters"
+    },
+    {
+      "input": "Árvíztűrő tükörfúrógép",
+      "expected": "arvizturo tukorfurogep",
+      "note": "classic Hungarian test phrase"
+    },
+    {
+      "input": "Reklamáció: törött bot",
+      "expected": "reklamacio: torott bot",
+      "note": "word starting with 're' is not a prefix"
+    },
+    {
+      "input": "Review: előrendelés",
+      "expected": "review: elorendeles",
+      "note": "'review:' is not a prefix"
+    },
+    {
+      "input": "Előrendelés: Fwd: ügyfél",
+      "expected": "elorendeles: fwd: ugyfel",
+      "note": "only leading prefixes are stripped"
+    },
+    {
+      "input": "Előrendelés 2026/03",
+      "expected": "elorendeles 2026/03",
+      "note": "digits and slash kept"
+    },
+    {
+      "input": "Re: ",
+      "expected": "",
+      "note": "prefix only"
+    },
+    {
+      "input": "",
+      "expected": "",
+      "note": "empty"
+    },
+    {
+      "input": "Va: Előrendelés",
+      "expected": "elorendeles",
+      "note": "short Hungarian reply prefix, mixed case"
+    }
+  ],
+  "matching": [
+    {
+      "name": "basic rules, priorities, disabled rule, regex",
+      "rules": [
+        {
+          "ruleId": "eloreendeles",
+          "enabled": true,
+          "priority": 10,
+          "subjectContains": [
+            "előrendelés",
+            "elorendeles",
+            "pre-order"
+          ],
+          "subjectRegex": null
+        },
+        {
+          "ruleId": "arajanlat",
+          "enabled": true,
+          "priority": 20,
+          "subjectContains": [
+            "árajánlat",
+            "ajánlatkérés"
+          ],
+          "subjectRegex": null
+        },
+        {
+          "ruleId": "reklamacio",
+          "enabled": true,
+          "priority": 5,
+          "subjectContains": [
+            "reklamáció"
+          ],
+          "subjectRegex": "^rma-[0-9]+"
+        },
+        {
+          "ruleId": "kikapcsolt",
+          "enabled": false,
+          "priority": 1,
+          "subjectContains": [
+            "előrendelés"
+          ],
+          "subjectRegex": null
+        }
+      ],
+      "cases": [
+        {
+          "subject": "Fwd: Előrendelés tavaszra",
+          "expectedRuleId": "eloreendeles",
+          "note": "disabled rule with better priority is ignored"
+        },
+        {
+          "subject": "ELORENDELES",
+          "expectedRuleId": "eloreendeles",
+          "note": "accent-free keyword"
+        },
+        {
+          "subject": "PRE-ORDER for spring",
+          "expectedRuleId": "eloreendeles",
+          "note": "English keyword, uppercase"
+        },
+        {
+          "subject": "Árajánlatkérés horgászbotra",
+          "expectedRuleId": "arajanlat",
+          "note": "keyword inside a longer word"
+        },
+        {
+          "subject": "Előrendelés és árajánlat",
+          "expectedRuleId": "eloreendeles",
+          "note": "two rules match, lower priority number wins"
+        },
+        {
+          "subject": "Reklamáció az előrendeléshez",
+          "expectedRuleId": "reklamacio",
+          "note": "priority 5 beats 10"
+        },
+        {
+          "subject": "RMA-1234 törött bot",
+          "expectedRuleId": "reklamacio",
+          "note": "regex on the normalized subject"
+        },
+        {
+          "subject": "Re: RMA-77",
+          "expectedRuleId": "reklamacio",
+          "note": "regex anchored after prefix stripping"
+        },
+        {
+          "subject": "Re: rma-xyz",
+          "expectedRuleId": null,
+          "note": "regex does not match"
+        },
+        {
+          "subject": "Fwd: Szállítási cím változás",
+          "expectedRuleId": null,
+          "note": "no match"
+        },
+        {
+          "subject": "Preorder",
+          "expectedRuleId": null,
+          "note": "keyword needs the hyphen"
+        },
+        {
+          "subject": "elő rendelés",
+          "expectedRuleId": null,
+          "note": "split word does not match"
+        },
+        {
+          "subject": "",
+          "expectedRuleId": null,
+          "note": "empty subject"
+        }
+      ]
+    },
+    {
+      "name": "priority ties are broken by rule id",
+      "rules": [
+        {
+          "ruleId": "beta",
+          "enabled": true,
+          "priority": 10,
+          "subjectContains": [
+            "rendeles"
+          ],
+          "subjectRegex": null
+        },
+        {
+          "ruleId": "alfa",
+          "enabled": true,
+          "priority": 10,
+          "subjectContains": [
+            "rendelés"
+          ],
+          "subjectRegex": null
+        },
+        {
+          "ruleId": "gamma",
+          "enabled": true,
+          "priority": 10,
+          "subjectContains": [
+            "rendel"
+          ],
+          "subjectRegex": null
+        },
+        {
+          "ruleId": "0zeta",
+          "enabled": true,
+          "priority": 10,
+          "subjectContains": [
+            "megrendel"
+          ],
+          "subjectRegex": null
+        }
+      ],
+      "cases": [
+        {
+          "subject": "Rendelés",
+          "expectedRuleId": "alfa",
+          "note": "three-way tie, alphabetical id wins"
+        },
+        {
+          "subject": "TOV: rendel",
+          "expectedRuleId": "gamma",
+          "note": "only one rule matches"
+        },
+        {
+          "subject": "Megrendelés",
+          "expectedRuleId": "0zeta",
+          "note": "ordinal comparison: digits sort before letters"
+        }
+      ]
+    }
+  ]
+}

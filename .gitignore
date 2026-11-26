@@ -1,0 +1,24 @@
+# Build output
+bin/
+obj/
+dist/
+publish/
+*.user
+*.suo
+.vs/
+.vscode/
+.idea/
+TestResults/
+*.trx
+
+# Local runtime data (dev, tests, e2e simulation)
+.devdata/
+.e2edata/
+.ci-data/
+
+# Node
+node_modules/
+
+# OS
+.DS_Store
+Thumbs.db
