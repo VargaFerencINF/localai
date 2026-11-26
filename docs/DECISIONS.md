@@ -765,3 +765,20 @@ memory). Jobs store prompt/output tokens, generation tokens/s and the model (mig
 90 % for a minute, under 10 % free memory, model larger than the machine, model on the processor although a card
 exists, partly offloaded model, average job time over 5 minutes.
 
+
+## After 1.3.0 (next release)
+
+### D-1105 Response normalizer before schema validation
+Small models often write numbers as text ("54,90 EUR"), Hungarian or dotted dates, enum values with accents, or
+leave out optional fields. `ResponseNormalizer` repairs these before the schema check. An optional value that cannot
+be repaired becomes null, the original text goes into `megjegyzes` and the row is marked `ellenorzendo`; errors in
+required columns still trigger the repair call. Unknown properties are removed. Spec section 8 is unchanged in
+substance: the output still matches the schema, only fewer emails fail for format slips.
+
+### D-1106 Required number 0 marks the row for review
+Real test (qwen3.5:9b, 50-item order): cancelled items ("ezt húzd ki", "töröld") came back as rows with quantity 0
+and confidence "magas", so they landed in the CSV as `ok`. Extension of the row status rule in spec section 8: a
+required `number`/`integer` column with value 0 also makes the row `ellenorzendo` (reason shown in the job panel).
+The sample prompt now also says to leave cancelled items out, to copy article codes into `cikkszam`, not to round
+computed quantities, and to use the next future date when the year is missing. Live rules are never overwritten
+by updates, so existing installations get the prompt change only if the operator edits the rule.

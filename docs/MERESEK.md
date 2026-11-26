@@ -10,10 +10,37 @@ A token/mp és a sorok száma a Teljesítmény oldalról és a feladat paneljér
 
 | Dátum | Gép | Futás helye | Modell | Levél | Idő | Sorok | Token/mp | Megjegyzés |
 |---|---|---|---|---|---|---|---|---|
-| 2026-11-26 | Laptop: Intel Core Ultra 7 155H, 31,3 GB RAM, Intel Arc (integrált) | processzor | `qwen3.5:9b` | Mérőlevél: nagy rendelés, 50 tétel | **1441 mp (~24 perc)** | – | – | Az alap 300 mp-es időkorlát kevés volt, a feladat időtúllépéssel újrapróbálkozott. |
+| 2026-11-26 | Laptop: Intel Core Ultra 7 155H, 31,3 GB RAM, Intel Arc (integrált) | processzor | `qwen3.5:9b` | Mérőlevél: nagy rendelés, 50 tétel | **1441 mp (~24 perc)** | 54 | – | Az alap 300 mp-es időkorlát kevés volt, a feladat időtúllépéssel újrapróbálkozott. Minőség: lásd lent. |
 | *(tervezett)* | Asztali gép | | `qwen3.5:9b` | Mérőlevél: nagy rendelés, 50 tétel | | | | |
 
 Rövid levelek (2–6 tétel) ugyanezen a laptopon: **~2–3 perc** levelenként.
+
+## Minőség: 2026-11-26, laptop, `qwen3.5:9b`, mérőlevél
+
+**Jól sikerült:**
+- **Sorok:** 54 sor (53 valódi tétel és a törölt 26.).
+- **Módosítások és mennyiségek:**
+  - 15. tétel: 50 tekercs, megjegyezte az eredeti 30-at;
+  - két tucat → 24, fél tucat → 6, „ugyanannyi” → 12;
+  - S/M és S/M/L/XL bontás helyes.
+- **Szállítás:** Kecskemét / 2027-02-15 és Szeged / 2027-03-01 a megfelelő sorokon.
+- **Árak:** helyesek; „szokásos áron” és „ha drágult” esetén üres, nem talált ki árat.
+- **Feltételes és bizonytalan tételek:**
+  - a 8. és az 50. tétel alacsony bizonyosságú → ellenőrzendő;
+  - a 25., 39., 42., 48. tétel közepes bizonyosságú, a feltétel a megjegyzésben.
+
+**Hibák:**
+- **Törölt tétel:** a 26. tétel („ezt húzd ki”) bekerült 0 mennyiséggel, „ok” státusszal. Ugyanez történt a
+  Pecás Paradicsom levélnél a törölt horoggal.
+- **Kerekítés:** „a fele” 25-ből 12 lett, nem 12,5, és nem jelölte bizonytalannak.
+- **Cikkszám:** az `EF-…` cikkszámok a megnevezésben maradtak, a `cikkszam` oszlop üres.
+- **Múltbeli dátum:** egy korábbi levélnél (Horgász Centrum) a „március 1” 2026-03-01 lett, múltbeli dátum.
+
+**Javítás:** a 0 mennyiségű sor ezentúl automatikusan ellenőrzendő (D-1106). A minta prompt kiegészült:
+- törölt tétel ne kerüljön be;
+- cikkszám kerüljön a cikkszam oszlopba;
+- számított mennyiségnél ne kerekítsen;
+- évszám nélküli dátumnál a következő jövőbeli dátumot használja.
 
 ## Becslések összevetéshez (nem mérés)
 

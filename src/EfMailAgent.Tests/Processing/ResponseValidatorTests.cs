@@ -64,6 +64,18 @@ public class ResponseValidatorTests
     }
 
     [Fact]
+    public void Zero_required_quantity_needs_review()
+    {
+        var outcome = ResponseValidator.Validate(SampleRule,
+            LlmAnswers.Rows(LlmAnswers.Row(quantity: 0), LlmAnswers.Row(quantity: 0.5)));
+
+        Assert.True(outcome.IsValid, string.Join("\n", outcome.Errors));
+        Assert.Equal(RowStatus.NeedsReview, outcome.Rows[0].Status);
+        Assert.Contains(outcome.Rows[0].ReviewReasons, r => r.Contains("mennyiseg") && r.Contains("0"));
+        Assert.Equal(RowStatus.Ok, outcome.Rows[1].Status);
+    }
+
+    [Fact]
     public void Empty_required_value_or_low_confidence_needs_review()
     {
         var outcome = ResponseValidator.Validate(SampleRule,
