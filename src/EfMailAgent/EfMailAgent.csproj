@@ -28,6 +28,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Admin UI: flat folder, served from embedded resources named admin/<file>. -->
+    <EmbeddedResource Include="Admin\wwwroot\*" LogicalName="admin/%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <ItemGroup>
     <InternalsVisibleTo Include="EfMailAgent.Tests" />
   </ItemGroup>
 

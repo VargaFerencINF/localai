@@ -462,5 +462,66 @@ The token ends up in `<Thunderbird>\distribution\policies.json`, which every loc
 Files). This is accepted: the API listens on 127.0.0.1 only, and on this dedicated server the local users are the
 operators anyway. It is documented for the user guide (Step 8).
 
+## Step 6
+
+### D-601 Admin login and session
+`POST /admin/api/login` exchanges the API token for a session cookie `efmailagent_admin` (HttpOnly, SameSite=Strict,
+Path=/admin, no Secure flag because it is plain HTTP on 127.0.0.1). The value is `issuedAt.HMAC-SHA256(issuedAt)`
+keyed with the API token: no server-side session store, sessions survive a service restart, expire after 12 hours
+and die when the token changes. The token itself is never stored in the browser. A wrong token costs 500 ms and is
+logged as a warning.
+
+### D-602 CSRF protection
+Every non-GET request under `/admin/api` (login included) needs the header `X-EfMailAgent-Admin: 1` and an `Origin`
+(or, if the browser sends none, a `Referer`) whose scheme, host and port equal the request's. A custom header cannot
+be sent cross-site without a CORS preflight, which the admin API never allows; together with SameSite=Strict this
+blocks cross-site requests. Failures are `403` without details (logged as a warning).
+
+### D-603 Admin page hardening
+Static files are embedded resources (`Admin/wwwroot`, flat folder, `admin/<file>` resource names) served with
+`Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'; ... frame-ancestors 'none'`,
+`X-Frame-Options: DENY`, `nosniff`, `Referrer-Policy: same-origin`; API answers are `no-store`. The UI never uses
+`innerHTML`: email text, prompts and model answers are inserted with `textContent` only.
+
+### D-604 Rule editing
+- `rule.yaml` is validated before it is written: the rule folder is copied to a temp folder with the new text and
+  loaded by the real `RuleLoader` (plus a duplicate-id check against the other rules). Errors come back in Hungarian
+  with `422` and nothing is written.
+- Every save keeps the previous version as `<file>.bak` (one backup per file, overwritten by the next save; `.bak`
+  files are ignored by the rules version). Rules are reloaded immediately instead of waiting for the file watcher.
+- The enabled switch, adding/removing skills and duplicating a rule edit `rule.yaml` as text (only the affected
+  line or the `skills` block changes, comments stay). A removed skill file is kept as `.bak`; `rule.yaml` and the
+  prompt file cannot be removed.
+- New rules (from a template or as a copy) start **disabled** so they cannot catch mail before their prompt is ready;
+  a copy gets the new id in its CSV file name. Ids: `^[a-z0-9][a-z0-9_-]*$`; skill file names `^[a-z0-9][a-z0-9_-]*\.md$`.
+- Only `.yaml`, `.yml`, `.md`, `.txt` files inside the rule folders and `_base` are reachable; paths may not leave
+  the folder; files up to 1 MB.
+
+### D-605 Test console
+Runs the saved rule (rules are reloaded first, so "save, then test" works) through the same `ExtractAsync` as the
+worker: prompt, LLM call, validation, repair call. Nothing goes to the queue or the CSV, and the mock provider does
+not dump the prompt (no job id). Sample emails come from `samples\emails` (next to the exe or in the repository),
+with metadata from `index.json`.
+
+### D-606 Settings applied without restart
+LLM settings (provider, URL, model, temperature, timeout, num_ctx, think, mock), CSV settings and the output folder
+apply immediately: `ReloadableLlmClient` recreates the HTTP/mock client when provider, URL or mock settings change,
+`CsvWriter` reads its settings and output folder on every write, and the LLM health cache is invalidated. The port
+needs a restart (and `install-addon`, so the add-on policy gets the new URL). Token, time zone and data folder are
+shown read-only. The output folder must be writable (checked with a probe file). Saving rewrites only the edited
+keys of `appsettings.json` (token and unknown keys stay) and keeps `appsettings.json.bak`.
+
+### D-607 Overview and log pages
+The overview refreshes every 10 s; jobs can be filtered by status (the "Ellenőrzendő" card links to the filter, part
+of Step 8's observability item). The add-on card uses the same status check as `addon-status`. The log page reads at
+most the last 2 MB of the newest `efmailagent-*.log` (shared read, the file stays writable for Serilog), groups
+multi-line entries (exceptions) and filters by minimum level.
+
+### D-608 UI verification
+The UI was driven with the preinstalled headless Chromium (Playwright) in the sandbox: login (wrong and right token),
+overview, job drawer, rule editor with an invalid save, prompt change + Tesztkonzol, settings connection test, log
+page, dark mode at phone width. Browser tests are not part of CI (no browser install there); the admin API is covered
+by xUnit tests.
+
 ## Planned for later steps (decided now, implemented later)
 

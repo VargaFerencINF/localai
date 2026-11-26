@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>EfMailAgent admin</title>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="app.css">
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <div id="login" class="login" hidden>
+    <form id="login-form" class="login-card" autocomplete="off">
+      <img src="favicon.svg" alt="" width="56" height="56">
+      <h1>EfMailAgent</h1>
+      <p class="muted">Add meg az API tokent a bejelentkezéshez.<br>A token az <code>EfMailAgent.exe print-token</code> paranccsal kérdezhető le.</p>
+      <label class="field">
+        <span>Token</span>
+        <input id="login-token" type="password" required spellcheck="false" autofocus>
+      </label>
+      <p id="login-error" class="error-text" role="alert"></p>
+      <button type="submit" class="primary wide">Bejelentkezés</button>
+    </form>
+  </div>
+
+  <div id="app" class="layout" hidden>
+    <aside class="sidebar">
+      <div class="brand">
+        <img src="favicon.svg" alt="" width="32" height="32">
+        <div>
+          <strong>EfMailAgent</strong>
+          <span id="version" class="muted small"></span>
+        </div>
+      </div>
+      <nav>
+        <a href="#/attekintes" data-page="attekintes">Áttekintés</a>
+        <a href="#/szabalyok" data-page="szabalyok">Szabályok</a>
+        <a href="#/tesztkonzol" data-page="tesztkonzol">Tesztkonzol</a>
+        <a href="#/beallitasok" data-page="beallitasok">Beállítások</a>
+        <a href="#/naplo" data-page="naplo">Napló</a>
+      </nav>
+      <button id="logout" type="button" class="ghost">Kijelentkezés</button>
+    </aside>
+    <main id="page" class="content" tabindex="-1"></main>
+  </div>
+
+  <aside id="drawer" class="drawer" hidden aria-label="Feladat részletei">
+    <header class="drawer-header">
+      <h2 id="drawer-title">Feladat</h2>
+      <button id="drawer-close" type="button" class="ghost" aria-label="Bezárás">✕</button>
+    </header>
+    <div id="drawer-body" class="drawer-body"></div>
+  </aside>
+  <div id="drawer-backdrop" class="backdrop" hidden></div>
+  <div id="toasts" class="toasts" aria-live="polite"></div>
+</body>
+</html>

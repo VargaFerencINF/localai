@@ -40,6 +40,7 @@ public sealed class ApiFixture : IAsyncDisposable
         configure?.Invoke(appSettings);
         var settings = new EffectiveSettings(new DataDirectory(temp.Path, DataDirectorySource.CommandLine), appSettings);
         SettingsBootstrapper.CopyDirectory(TestPaths.SampleRules, settings.RulesDir);
+        SettingsBootstrapper.WriteAtomic(settings.SettingsFile, System.Text.Json.JsonSerializer.Serialize(appSettings));
 
         var app = ApiHost.Build(settings, new LoggerConfiguration().CreateLogger(), builder => builder.WebHost.UseTestServer());
         await app.StartAsync();

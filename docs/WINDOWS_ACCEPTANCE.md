@@ -96,3 +96,18 @@ A `dist\EfMailAgent.exe` és a `dist\efmailagent.xpi` legyen egy mappában.
 - [ ] Profil mód (ha a policy mód valamiért nem használható): `EfMailAgent.exe install-addon --mode profile`
       (szolgáltatásként futtatva `--user-profile-root C:\Users\<felhasználó>\AppData\Roaming\Thunderbird`) -> a
       Thunderbird indításkor rákérdez az add-onra; a tokent a beállításoknál kell megadni.
+
+## 6. lépés: admin felület
+
+- [ ] A szerveren böngészőben (Edge/Chrome/Firefox) megnyílik a `http://127.0.0.1:47811/admin`; a tokennel (EfMailAgent.exe
+      print-token) be lehet jelentkezni, hibás tokennel nem.
+- [ ] Áttekintés: a valódi Ollama „elérhető”, a modell neve látszik; a Thunderbird add-on kártya „rendben” az
+      install-addon után.
+- [ ] Szabályok: a `prompt.md` módosítása és mentése után a Tesztkonzolban egy minta e-mailen az új prompt fut
+      (a „Összeállított prompt: rendszer” részben látszik), a valódi modell válasza és a sorok megjelennek.
+- [ ] Ezután egy valódi, továbbított előrendelés feldolgozásánál (Áttekintés > feladat részletei) az új prompt látszik.
+- [ ] Egy szándékosan hibás `rule.yaml` mentését a felület elutasítja magyar hibaüzenettel, a fájl nem változik.
+- [ ] Beállítások: „Kapcsolat tesztelése” kilistázza az Ollama modelljeit; a modell átírása és mentése után a következő
+      feladat már az új modellel fut (újraindítás nélkül).
+- [ ] Napló: a friss sorok látszanak, a szintszűrő működik.
+- [ ] Egy másik gépről a `http://<szerver>:47811/admin` nem érhető el.

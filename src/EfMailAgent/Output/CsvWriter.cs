@@ -24,23 +24,37 @@ public sealed class CsvWriter
     private static readonly byte[] Bom = [0xEF, 0xBB, 0xBF];
 
     private readonly CsvSettings _settings;
-    private readonly string _outputDir;
+    private readonly Func<string> _outputDirProvider;
     private readonly TimeZoneInfo _timeZone;
     private readonly ILogger _logger;
-    private readonly CsvFormatter _formatter;
-    private readonly TimeSpan _lockRetry;
-    private readonly TimeSpan _lockRetryInterval;
+    private string _outputDir = "";
+    private CsvFormatter _formatter = new(';', ",");
+    private TimeSpan _lockRetry;
+    private TimeSpan _lockRetryInterval;
+    private readonly TimeSpan? _lockRetryOverride;
+    private readonly TimeSpan? _lockRetryIntervalOverride;
 
     public CsvWriter(CsvSettings settings, string outputDir, TimeZoneInfo timeZone, ILogger<CsvWriter>? logger = null,
         TimeSpan? lockRetry = null, TimeSpan? lockRetryInterval = null)
+        : this(settings, () => outputDir, timeZone, logger, lockRetry, lockRetryInterval)
+    {
+    }
+
+    /// <summary>Settings are read on every write, so changes made in the admin UI apply without a restart.</summary>
+    public CsvWriter(EffectiveSettings settings, TimeZoneInfo timeZone, ILogger<CsvWriter>? logger = null)
+        : this(settings.Settings.Csv, () => settings.OutputDir, timeZone, logger, null, null)
+    {
+    }
+
+    private CsvWriter(CsvSettings settings, Func<string> outputDirProvider, TimeZoneInfo timeZone, ILogger<CsvWriter>? logger,
+        TimeSpan? lockRetry, TimeSpan? lockRetryInterval)
     {
         _settings = settings;
-        _outputDir = outputDir;
+        _outputDirProvider = outputDirProvider;
         _timeZone = timeZone;
         _logger = (ILogger?)logger ?? NullLogger.Instance;
-        _formatter = new CsvFormatter(settings.Delimiter[0], settings.DecimalSeparator);
-        _lockRetry = lockRetry ?? TimeSpan.FromSeconds(settings.LockRetrySeconds);
-        _lockRetryInterval = lockRetryInterval ?? TimeSpan.FromSeconds(settings.LockRetryIntervalSeconds);
+        _lockRetryOverride = lockRetry;
+        _lockRetryIntervalOverride = lockRetryInterval;
     }
 
     public static IReadOnlyList<string> HeaderColumns(RuleOutput output) =>
@@ -52,6 +66,11 @@ public sealed class CsvWriter
         if (rows.Count == 0)
             return null;
 
+        // One consistent snapshot of the (live editable) settings per write.
+        _outputDir = _outputDirProvider();
+        _formatter = new CsvFormatter(_settings.Delimiter[0], _settings.DecimalSeparator);
+        _lockRetry = _lockRetryOverride ?? TimeSpan.FromSeconds(_settings.LockRetrySeconds);
+        _lockRetryInterval = _lockRetryIntervalOverride ?? TimeSpan.FromSeconds(_settings.LockRetryIntervalSeconds);
         Directory.CreateDirectory(_outputDir);
         var header = _formatter.FormatLine(HeaderColumns(rule.Output));
         var body = new StringBuilder();

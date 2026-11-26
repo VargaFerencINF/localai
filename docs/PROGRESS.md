@@ -7,8 +7,8 @@
 | 3 | HTTP API | **done** |
 | 4 | Thunderbird add-on | **done** |
 | 5 | Add-on installation from the exe | **done** |
-| 6 | Admin UI | next |
-| 7 | Windows Service and installer | |
+| 6 | Admin UI | **done** |
+| 7 | Windows Service and installer | next |
 | 8 | End-to-end test, hardening, user guide | |
 
 ---
@@ -205,3 +205,54 @@
 
 ### Notes for the next step
 - Decisions D-501..D-507. The admin UI (Step 6) can show `AddonInstaller.GetStatus()` for the add-on panel.
+
+---
+
+## Step 6: Admin UI (done, 2026-11-26)
+
+### What exists
+- `http://127.0.0.1:<port>/admin`: Hungarian single-page UI (static HTML + Vanilla JS + CSS variables, embedded in
+  the exe, no CDN, no build step), light/dark theme, works down to phone width.
+  - **Áttekintés**: AI (LLM) reachability, queue length, rules (enabled / invalid, version), Thunderbird add-on
+    status, needs-review count with filter link; last 50 jobs with status filter chips (auto refresh 10 s); job drawer
+    with metadata, extracted rows, raw answer, repair answer, assembled prompt, email body, "Újrafuttatás".
+  - **Szabályok**: rule list with enabled switch and validity badges, "Közös rendszerprompt" (`_base/system.md`),
+    file tabs (rule.yaml, prompt.md, skills), save with server-side validation and inline Hungarian errors, .bak on
+    every save, add/remove skill file, "Új szabály" from a template, "Másolat készítése".
+  - **Tesztkonzol**: rule + sample email picker, subject/sender/body, run synchronously against the LLM without
+    queue or CSV; status, timing, rows table (needs-review rows highlighted), raw answer, repair answer and errors,
+    assembled prompt.
+  - **Beállítások**: LLM provider/URL/model (suggestions from the server's model list)/temperature/timeout/num_ctx/
+    think/mock, "Kapcsolat tesztelése", CSV options, output folder, port; states what applied now and what needs a
+    restart.
+  - **Napló**: tail of the current log file, level filter, line count, auto refresh.
+- Backend (`src/EfMailAgent/Admin`): `AdminSessions` + `AdminGuardMiddleware` (cookie session, CSRF, security
+  headers), `AdminEndpoints` (/admin/api/*), `RuleFileService` + `RuleYamlEditor`, `SettingsService`, `LogTail`,
+  `SampleEmails`, `StaticAssets`; `ReloadableLlmClient`; `CsvWriter` now reads settings per write.
+- Tests (36 new): auth (cookie flags, forged cookie, logout, expiry, token change), CSRF (missing header, foreign
+  origin/port, no origin, same-origin referer, login), static files + CSP, rule list/read, invalid rule.yaml refused
+  with Hungarian errors and nothing written, prompt save with .bak and reload, path traversal / extension / unknown
+  folder, enabled switch keeps comments and changes matchers, skills add/remove, new rule from template, duplicate,
+  test console (rows, no queue, no CSV, repair path, unknown rule), samples, settings (masked token, live apply incl.
+  output folder used by the next job, validation errors, port restart), LLM connection test, log tail, job detail +
+  retry, YAML editor, and the acceptance flow (prompt changed in the UI -> Tesztkonzol -> next real job uses it).
+
+### Verification
+- `dotnet test`: **274 passed**; Node tests 84 passed; e2e simulation passed.
+- Browser check with headless Chromium in the sandbox (D-608). What the screenshots show:
+  1. Login card with the token field; a wrong token shows "Hibás token.".
+  2. Áttekintés: five status cards (AI elérhető/mock, Sor 0 feladat, Szabályok 1 bekapcsolva, Thunderbird add-on
+     "nincs telepítve / javítandó", Ellenőrzendő 5 feladat with link), filter chips with counts (Mind 6, Ellenőrzendő
+     5, Hiba 1) and the job table with coloured status badges and the error line under the failed job.
+  3. Job drawer: status, id, "Újrafuttatás", metadata (original sender detected), extracted rows table with the
+     uncertain 5th row highlighted and "Alacsony bizonyosság." under its badge.
+  4. Szabályok: rule list with the switch, rule.yaml tab; an invalid edit (`type: decimal`) is refused with
+     "Nem mentettem: a szabály hibás lenne." and the Hungarian loader error.
+  5. Tesztkonzol: form on the left (demo sample loaded), result on the right: amber verdict "Érvényes válasz, de van
+     ellenőrzendő sor", original sender, rows table, collapsible raw answer and prompt sections.
+  6. Beállítások: AI, CSV and service sections; "Kapcsolat rendben (0 ms). Elérhető modellek: mock.".
+  7. Napló: colour-coded log lines with level filter and auto refresh switch.
+  8. Dark theme at 390 px width: navigation wraps above the stacked cards.
+
+### Notes for the next step
+- Decisions D-601..D-608. Step 7 should mention the admin URL on the installer's final page.

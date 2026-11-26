@@ -74,6 +74,18 @@ public sealed class JobQueue(JobDatabase database, TimeProvider? timeProvider = 
         return ReadAll(command);
     }
 
+    public IReadOnlyDictionary<string, int> CountByStatus()
+    {
+        using var connection = database.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT status, COUNT(*) FROM jobs GROUP BY status";
+        var result = JobStatus.All.ToDictionary(s => s, _ => 0);
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+            result[reader.GetString(0)] = reader.GetInt32(1);
+        return result;
+    }
+
     /// <summary>Jobs waiting or running.</summary>
     public int QueueLength()
     {

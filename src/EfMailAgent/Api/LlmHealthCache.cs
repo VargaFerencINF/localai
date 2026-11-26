@@ -10,6 +10,9 @@ public sealed class LlmHealthCache(ILlmClient llm, TimeProvider timeProvider)
     private readonly SemaphoreSlim _lock = new(1, 1);
     private (LlmHealth Health, DateTimeOffset At)? _cached;
 
+    /// <summary>Forget the cached result (after the LLM settings changed).</summary>
+    public void Invalidate() => _cached = null;
+
     public async Task<LlmHealth> GetAsync(CancellationToken cancellationToken)
     {
         if (_cached is { } c && timeProvider.GetUtcNow() - c.At < Ttl)

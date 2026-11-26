@@ -32,9 +32,8 @@ public static class ServiceRegistration
         });
         services.AddSingleton(_ => new JobDatabase(settings.DataDir));
         services.AddSingleton(sp => new JobQueue(sp.GetRequiredService<JobDatabase>(), sp.GetRequiredService<TimeProvider>()));
-        services.AddSingleton<ILlmClient>(_ => LlmClientFactory.Create(settings));
-        services.AddSingleton(sp => new CsvWriter(settings.Settings.Csv, settings.OutputDir, sp.GetRequiredService<TimeZoneInfo>(),
-            sp.GetRequiredService<ILogger<CsvWriter>>()));
+        services.AddSingleton<ILlmClient>(_ => new ReloadableLlmClient(settings));
+        services.AddSingleton(sp => new CsvWriter(settings, sp.GetRequiredService<TimeZoneInfo>(), sp.GetRequiredService<ILogger<CsvWriter>>()));
         services.AddSingleton(sp => new JobProcessor(
             sp.GetRequiredService<RuleRepository>(),
             sp.GetRequiredService<JobQueue>(),
