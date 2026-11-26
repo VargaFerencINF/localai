@@ -87,7 +87,10 @@ public class KestrelHostTests
         tmp.WriteFile("appsettings.json", System.Text.Json.JsonSerializer.Serialize(settings.Settings));
         await using var app = ApiHost.Build(settings, new LoggerConfiguration().CreateLogger());
         await app.StartAsync();
-        var filesBefore = Directory.GetFiles(tmp.Path, "*", SearchOption.AllDirectories).Order().ToArray();
+        // The running instance itself may touch its SQLite side files (-wal/-shm); only the second start must write nothing.
+        string[] Files() => Directory.GetFiles(tmp.Path, "*", SearchOption.AllDirectories)
+            .Where(f => !f.EndsWith("-wal", StringComparison.Ordinal) && !f.EndsWith("-shm", StringComparison.Ordinal)).Order().ToArray();
+        var filesBefore = Files();
         Environment.SetEnvironmentVariable(AdminLauncher.NoBrowserVariable, "1");
         try
         {
@@ -95,7 +98,7 @@ public class KestrelHostTests
             Assert.True(await AdminLauncher.OpenRunningInstanceAsync(tmp.Path, output, CancellationToken.None));
             Assert.Contains("Az EfMailAgent már fut", output.ToString());
             Assert.Contains($"http://127.0.0.1:{port}/admin/", output.ToString());
-            Assert.Equal(filesBefore, Directory.GetFiles(tmp.Path, "*", SearchOption.AllDirectories).Order().ToArray());
+            Assert.Equal(filesBefore, Files());
         }
         finally
         {

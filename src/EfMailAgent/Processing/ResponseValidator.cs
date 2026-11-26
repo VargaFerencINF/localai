@@ -21,8 +21,9 @@ public sealed record ValidationOutcome(bool IsValid, IReadOnlyList<string> Error
 }
 
 /// <summary>
-/// Parses the model output, validates it against the rule's JSON Schema (JsonSchema.Net) plus checks the schema cannot
-/// express (real calendar dates), and assigns row statuses (CLAUDE.md section 8).
+/// Parses the model output, repairs format slips (<see cref="ResponseNormalizer"/>), validates it against the rule's JSON
+/// Schema (JsonSchema.Net) plus checks the schema cannot express (real calendar dates), and assigns row statuses
+/// (CLAUDE.md section 8).
 /// </summary>
 public static partial class ResponseValidator
 {
@@ -44,17 +45,21 @@ public static partial class ResponseValidator
         if (fence.Success)
             text = fence.Groups["json"].Value;
 
-        JsonDocument document;
+        JsonNode? parsed;
         try
         {
-            document = JsonDocument.Parse(text);
+            parsed = JsonNode.Parse(text);
         }
         catch (JsonException ex)
         {
             return ValidationOutcome.Invalid($"A válasz nem érvényes JSON: {ex.Message}");
         }
 
-        using (document)
+        // Repairable format slips (numbers as text, Hungarian dates, missing optional fields...) are fixed first;
+        // an unreadable optional value is emptied and its row marked for review instead of failing the whole email.
+        var corrections = ResponseNormalizer.Normalize(output, parsed);
+
+        using (var document = JsonDocument.Parse(parsed?.ToJsonString() ?? "null"))
         {
             var schema = JsonSchema.FromText(schemaNode.ToJsonString(), new BuildOptions { SchemaRegistry = new SchemaRegistry() });
             var result = schema.Evaluate(document.RootElement, new EvaluationOptions { OutputFormat = OutputFormat.List });
@@ -92,15 +97,15 @@ public static partial class ResponseValidator
             if (errors.Count > 0)
                 return new ValidationOutcome(false, errors, []);
 
-            var rows = rowsNode.Select(r => ClassifyRow(output, r!.AsObject())).ToArray();
+            var rows = rowsNode.Select((r, i) => ClassifyRow(output, r!.AsObject(), corrections.GetValueOrDefault(i))).ToArray();
             return new ValidationOutcome(true, [], rows);
         }
     }
 
     /// <summary>ellenorzendo if an enum column named "bizonyossag" says "alacsony" or a required column is empty.</summary>
-    public static ExtractedRow ClassifyRow(RuleOutput output, JsonObject row)
+    public static ExtractedRow ClassifyRow(RuleOutput output, JsonObject row, IReadOnlyList<string>? corrections = null)
     {
-        var reasons = new List<string>();
+        var reasons = new List<string>(corrections ?? []);
         foreach (var column in output.Columns)
         {
             var value = row[column.Name];
