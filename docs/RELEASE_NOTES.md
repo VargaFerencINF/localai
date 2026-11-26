@@ -1,5 +1,11 @@
 # EfMailAgent kiadási megjegyzések
 
+## 1.2.1 (2026-11-26)
+
+- Az AI telepítő varázsló modell-listája frissítve a jelenlegi Ollama modellekre: **Qwen3.5 9B** (ajánlott, kb. 6,6 GB),
+  **Qwen3.5 4B** (gyors, kb. 3,3 GB), Gemma 4 E4B, Qwen3.5 2B és 27B. Az ajánlás a gép memóriája alapján: 14 GB-tól a
+  Qwen3.5 9B. (Az 1.2.0 még a régi Qwen3 neveket kínálta; bármelyik név kézzel is beírható volt.)
+
 ## 1.2.0 (2026-11-26)
 
 ### Újdonságok

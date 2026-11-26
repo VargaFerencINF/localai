@@ -78,29 +78,30 @@ public class OllamaSetupTests : IAsyncLifetime
     }
 
     [Theory]
-    [InlineData(8, "qwen3:4b")]
-    [InlineData(16, "qwen3:8b")]
-    [InlineData(32, "qwen3:14b")]
+    [InlineData(4, "qwen3.5:2b")]
+    [InlineData(8, "qwen3.5:4b")]
+    [InlineData(16, "qwen3.5:9b")]
+    [InlineData(32, "qwen3.5:9b")]
     public void Recommendation_follows_the_memory(int ramGb, string expected) => Assert.Equal(expected, OllamaSetupService.Recommend(ramGb));
 
     [Fact]
     public async Task Pull_reports_progress_and_finishes_then_apply_switches_the_settings()
     {
         var service = Service();
-        service.StartPull("qwen3:8b", _ollama.BaseUrl);
+        service.StartPull("qwen3.5:9b", _ollama.BaseUrl);
         var done = await WaitAsync(service);
 
         Assert.False(done.Failed, done.Message);
         Assert.Equal(100, done.Percent);
-        Assert.Contains("qwen3:8b", _ollama.Models);
+        Assert.Contains("qwen3.5:9b", _ollama.Models);
 
-        var result = service.Apply("qwen3:8b", _ollama.BaseUrl);
+        var result = service.Apply("qwen3.5:9b", _ollama.BaseUrl);
         Assert.True(result.Saved, string.Join(" ", result.Errors));
         Assert.Equal(LlmProviders.Ollama, _settings.Settings.Llm.Provider);
-        Assert.Equal("qwen3:8b", _settings.Settings.Llm.Model);
+        Assert.Equal("qwen3.5:9b", _settings.Settings.Llm.Model);
         Assert.Equal(_ollama.BaseUrl, _settings.Settings.Llm.BaseUrl);
         var file = JsonNode.Parse(File.ReadAllText(_settings.SettingsFile))!;
-        Assert.Equal("qwen3:8b", file["Llm"]!["Model"]!.GetValue<string>());
+        Assert.Equal("qwen3.5:9b", file["Llm"]!["Model"]!.GetValue<string>());
     }
 
     [Fact]

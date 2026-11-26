@@ -572,22 +572,22 @@ try {
     await page.click('#ollama-wizard >> text=Újraellenőrzés');
     await until(async () => (await page.textContent('#ollama-wizard')).includes('Az Ollama fut (verzió: 0.12.3)'), 'nem ismerte fel a futó Ollamát');
     assert((await page.textContent('#ollama-wizard')).includes('ajánlott ehhez a géphez'), 'nincs ajánlott modell');
-    await page.check('#ollama-wizard input[value="qwen3:4b"]');
+    await page.check('#ollama-wizard input[value="qwen3.5:4b"]');
     await page.click('#ollama-pull');
     await page.waitForSelector('#ollama-task progress');
     await shot(page, '10b-ollama-letoltes');
-    await until(async () => (await page.textContent('#ollama-wizard')).includes('qwen3:4b modell letöltve'), 'a letöltés nem fejeződött be', 30_000, 300);
-    const row = page.locator('#ollama-wizard tr', { hasText: 'Qwen3 4B' });
+    await until(async () => (await page.textContent('#ollama-wizard')).includes('qwen3.5:4b modell letöltve'), 'a letöltés nem fejeződött be', 30_000, 300);
+    const row = page.locator('#ollama-wizard tr', { hasText: 'Qwen3.5 4B' });
     assert((await row.textContent()).includes('letöltve'), 'a modell nem jelölődött letöltöttnek');
   });
   await check('AI telepítő: „Használat ezzel a modellel” beállítja a programot', async () => {
-    await page.check('#ollama-wizard input[value="qwen3:4b"]');
+    await page.check('#ollama-wizard input[value="qwen3.5:4b"]');
     await page.click('#ollama-apply');
-    await until(async () => (await page.textContent('#ollama-wizard')).includes('Kész: a program az Ollama qwen3:4b modelljével dolgozik'), 'nincs kész állapot', 15_000);
-    assert((await page.inputValue('#set-provider')) === 'ollama' && (await page.inputValue('#set-model')) === 'qwen3:4b', 'a kézi beállításokban nem az új modell látszik');
+    await until(async () => (await page.textContent('#ollama-wizard')).includes('Kész: a program az Ollama qwen3.5:4b modelljével dolgozik'), 'nincs kész állapot', 15_000);
+    assert((await page.inputValue('#set-provider')) === 'ollama' && (await page.inputValue('#set-model')) === 'qwen3.5:4b', 'a kézi beállításokban nem az új modell látszik');
     await shot(page, '10c-ollama-kesz');
     await go(page, '#/attekintes');
-    await until(async () => (await page.textContent('.grid-cards')).includes('qwen3:4b'), 'az Áttekintés nem az új modellt mutatja');
+    await until(async () => (await page.textContent('.grid-cards')).includes('qwen3.5:4b'), 'az Áttekintés nem az új modellt mutatja');
   });
 
   await section('10. Napló');

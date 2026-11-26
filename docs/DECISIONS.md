@@ -727,3 +727,8 @@ service cannot start an installer on the user's desktop (it shows the download l
 both cases. One background task at a time; the UI polls its state. The model list is a recommendation only: names
 change in the Ollama library, so any name can be entered and a missing one gives a Hungarian hint.
 
+### D-1005 Model list of the wizard (1.2.1)
+The curated list of 1.2.0 still offered the Qwen3 names. Checked against the Ollama library in November 2026 (Qwen3.5
+2B/4B/9B/27B, Gemma 4 E4B with their download sizes); recommendation by memory: 14 GB and more qwen3.5:9b, from 7 GB
+qwen3.5:4b, below qwen3.5:2b. The 27B model is listed but never recommended automatically (too slow on a processor).
+

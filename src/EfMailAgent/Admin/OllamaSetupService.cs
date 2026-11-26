@@ -102,13 +102,14 @@ public sealed partial class OllamaSetupService(
     EffectiveSettings settings, SettingsService settingsService, RuntimeInfo runtime, IOllamaPlatform platform,
     OllamaSetupOptions options, ILogger<OllamaSetupService> logger)
 {
+    // Checked against the Ollama library (ollama.com/library/qwen3.5, /gemma4) in November 2026; any other name can be typed in.
     public static readonly IReadOnlyList<OllamaModelChoice> Choices =
     [
-        new("qwen3:4b", "Qwen3 4B", "Gyors, kisebb gépekre (CPU-n is használható). Egyszerűbb leveleknél jó.", 2.6, 8),
-        new("qwen3:8b", "Qwen3 8B", "Kiegyensúlyozott: jó magyar szövegértés, közepes gépre. A legtöbb esetben ezt ajánljuk.", 5.2, 16),
-        new("qwen3:14b", "Qwen3 14B", "Pontosabb, de lassabb; sok memóriát vagy videókártyát igényel.", 9.3, 24),
-        new("gemma3:12b", "Gemma 3 12B", "Jó többnyelvű modell, a Qwen3 8B alternatívája.", 8.1, 20),
-        new("llama3.1:8b", "Llama 3.1 8B", "Elterjedt általános modell; magyarul gyengébb a Qwennél.", 4.9, 16),
+        new("qwen3.5:4b", "Qwen3.5 4B", "Gyors, kisebb gépekre (processzoron is jól használható). Egyszerűbb, felsorolásos leveleknél elég lehet.", 3.3, 8),
+        new("qwen3.5:9b", "Qwen3.5 9B", "Kiegyensúlyozott: jó magyar szövegértés és megbízható JSON. A legtöbb esetben ezt ajánljuk.", 6.6, 16),
+        new("gemma4:e4b", "Gemma 4 E4B", "A Google modellje, a Qwen3.5 9B alternatívája; érdemes a Tesztkonzolban összevetni.", 6.6, 16),
+        new("qwen3.5:27b", "Qwen3.5 27B", "A legpontosabb, de nagyon lassú videókártya nélkül; sok memóriát igényel.", 17, 32),
+        new("qwen3.5:2b", "Qwen3.5 2B", "Nagyon kicsi és gyors, gyenge gépekre; összetettebb leveleknél pontatlanabb.", 2.7, 4),
     ];
 
     private readonly object _lock = new();
@@ -131,7 +132,8 @@ public sealed partial class OllamaSetupService(
 
     public static int RecommendedRamGb(long totalBytes) => (int)Math.Round(totalBytes / 1024d / 1024 / 1024);
 
-    public static string Recommend(int ramGb) => ramGb >= 28 ? "qwen3:14b" : ramGb >= 14 ? "qwen3:8b" : "qwen3:4b";
+    // The 27B model is never recommended automatically: on a processor it is too slow for daily use.
+    public static string Recommend(int ramGb) => ramGb >= 14 ? "qwen3.5:9b" : ramGb >= 7 ? "qwen3.5:4b" : "qwen3.5:2b";
 
     public async Task<object> StatusAsync(string? baseUrl, CancellationToken cancellationToken)
     {
@@ -189,7 +191,7 @@ public sealed partial class OllamaSetupService(
     {
         model = model?.Trim() ?? "";
         if (!ModelNameRegex().IsMatch(model) || model.Length > 120)
-            throw new AdminRequestException("Érvénytelen modellnév. Példa: qwen3:8b", 400);
+            throw new AdminRequestException("Érvénytelen modellnév. Példa: qwen3.5:9b", 400);
         var url = NormalizeBaseUrl(baseUrl);
         Begin(new OllamaTaskState("pull", "letoltes", $"A(z) {model} modell letöltésének indítása…", 0, true, false, model));
         _ = System.Threading.Tasks.Task.Run(() => PullAsync(model, url));
