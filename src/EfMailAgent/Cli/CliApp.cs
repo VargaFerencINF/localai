@@ -50,6 +50,31 @@ public static class CliApp
         });
         root.Subcommands.Add(printToken);
 
+        // test-rule
+        var ruleIdArgument = new Argument<string>("szabaly") { Description = "A szabály azonosítója (pl. eloreendeles)." };
+        var fileOption = new Option<string>("--file") { Description = "E-mail fájl: .eml (fejlécekkel) vagy .txt (csak a törzs).", Required = true, HelpName = "fájl" };
+        var subjectOption = new Option<string?>("--subject") { Description = "Tárgy (felülírja az .eml tárgyát).", HelpName = "tárgy" };
+        var fromOption = new Option<string?>("--from") { Description = "Feladó (felülírja az .eml feladóját).", HelpName = "feladó" };
+        var writeOption = new Option<bool>("--write") { Description = "A teljes folyamat a soron keresztül fut, és CSV-t ír." };
+        var newIdOption = new Option<bool>("--new-message-id") { Description = "--write mellett új Message-ID-t használ (ismételt teszteléshez)." };
+        var testRule = new Command("test-rule", "Egy e-mailt lefuttat egy szabályon: kiírja a promptot, a nyers választ és a sorokat. --write nélkül semmit nem ír.");
+        testRule.Arguments.Add(ruleIdArgument);
+        testRule.Options.Add(fileOption);
+        testRule.Options.Add(subjectOption);
+        testRule.Options.Add(fromOption);
+        testRule.Options.Add(writeOption);
+        testRule.Options.Add(newIdOption);
+        testRule.SetAction(async (parse, cancellationToken) =>
+        {
+            using var context = AgentContextFactory.Create(parse.GetValue(dataDirOption), error, LogEventLevel.Warning);
+            if (context is null)
+                return ExitCodes.ConfigurationError;
+            var options = new TestRuleOptions(parse.GetValue(ruleIdArgument)!, parse.GetValue(fileOption)!, parse.GetValue(subjectOption),
+                parse.GetValue(fromOption), parse.GetValue(writeOption), parse.GetValue(newIdOption));
+            return await TestRuleCommand.RunAsync(context, options, output, error, cancellationToken);
+        });
+        root.Subcommands.Add(testRule);
+
         // No subcommand: the service/console host arrives in Step 3; until then show help.
         root.SetAction(parse =>
         {
@@ -78,6 +103,8 @@ public static class ExitCodes
     public const int Ok = 0;
     public const int InvalidRules = 1;
     public const int ConfigurationError = 2;
+    public const int UsageError = 3;
+    public const int ProcessingFailed = 4;
 }
 
 internal static class ValidateRulesCommand

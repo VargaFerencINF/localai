@@ -20,3 +20,23 @@ A buildelt `EfMailAgent.exe` a GitHub Actions „build” futásának `EfMailAge
       kb. 1 másodpercen belül újra megjelenik a táblázat, új verziószámmal.
 - [ ] Egy szándékosan elrontott `rule.yaml` (pl. `type: decimal`) magyar hibaüzenetet ad, a többi szabály érvényes
       marad, a kilépési kód 1.
+
+## 2. lépés: feldolgozó lánc (sor, worker, AI, CSV)
+
+Előkészítés: az `appsettings.json`-ban `"Llm": { "Provider": "ollama", "BaseUrl": "http://127.0.0.1:11434", "Model": "qwen3.5:9b" }`
+(a pontos modellnevet az `ollama list` mutatja).
+
+- [ ] `EfMailAgent.exe test-rule eloreendeles --file samples\emails\demo_eloreendeles_01.eml` értelmes sorokat ad
+      (5 tétel, a 3,9 m-es feeder bot `alacsony` bizonyossággal), és semmit nem ír a `output` mappába.
+- [ ] Ugyanez a 6 `.txt` mintára, a tárgyat és a feladót a `samples\emails\index.json` alapján megadva
+      (`--subject "..." --from "..."`). Feljegyezni: hány tétel jött, mi hibázott, mennyi ideig tartott egy levél.
+- [ ] Az Ollama elfogadja a `think: false` mezőt a modellhez (ha HTTP 400 jön emiatt, jelezni kell).
+- [ ] A `NumCtx` 16384 belefér a gép memóriájába / GPU-jába (különben csökkenteni, pl. 8192).
+- [ ] `test-rule ... --write` után a CSV Excelben helyesen nyílik meg: ékezetek, oszlopok (`;`), tizedesvessző.
+- [ ] Zárolt CSV: a CSV nyitva Excelben, `Csv.LockRetrySeconds` = 30, `test-rule ... --write --new-message-id` ->
+      kb. 30 mp után `eloreendeles_..._pending_<jobId>.csv` jön létre, figyelmeztetés a naplóban, az eredeti fájl ép.
+- [ ] Leállított Ollama mellett `test-rule ... --write --new-message-id` -> „nem érhető el”, a feladat a sorban
+      marad (`queued`), nem lesz `failed`.
+- [ ] Hálózati megosztás kimenetként (`Paths.Output` = `\\szerver\megosztas\efmailagent`): az írás működik a
+      szolgáltatás fiókjával (a szolgáltatás a 7. lépésben készül; addig a saját felhasználóval).
+- [ ] (Opcionális) LM Studio: `Provider: openai_compatible`, `BaseUrl: http://127.0.0.1:1234` -> ugyanaz az eredmény.

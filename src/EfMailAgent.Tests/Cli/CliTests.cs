@@ -80,3 +80,78 @@ public class CliTests
         return (code, stdout.ToString(), stderr.ToString());
     }
 }
+
+[Collection("Console")]
+public class TestRuleCliTests
+{
+    [Fact]
+    public async Task Dry_run_prints_prompt_answer_and_rows_and_writes_nothing()
+    {
+        using var tmp = new TempDir();
+        var data = PrepareMockData(tmp);
+        var stdout = new StringWriter();
+        var stderr = new StringWriter();
+
+        var code = await CliApp.RunAsync(["test-rule", "eloreendeles", "--file", Demo, "--data-dir", data], stdout, stderr);
+
+        var text = stdout.ToString();
+        Assert.True(code == ExitCodes.Ok, stderr.ToString() + text);
+        Assert.Contains("===== SYSTEM =====", text);
+        Assert.Contains("===== USER =====", text);
+        Assert.Contains("===== NYERS VÁLASZ (mock", text);
+        Assert.Contains("Érvényes válasz, 5 sor, a feladat állapota ez lenne: needs_review", text);
+        Assert.Contains("5. sor  [ellenorzendo]", text);
+        Assert.Empty(Directory.GetFiles(Path.Combine(data, "output")));
+        Assert.False(Directory.Exists(Path.Combine(data, "data", "mock-prompts")));
+    }
+
+    [Fact]
+    public async Task Write_runs_through_the_queue_and_dedups()
+    {
+        using var tmp = new TempDir();
+        var data = PrepareMockData(tmp);
+        var stdout = new StringWriter();
+
+        var first = await CliApp.RunAsync(["test-rule", "eloreendeles", "--file", Demo, "--write", "--data-dir", data], stdout, new StringWriter());
+        var second = await CliApp.RunAsync(["test-rule", "eloreendeles", "--file", Demo, "--write", "--data-dir", data], stdout, new StringWriter());
+        var third = await CliApp.RunAsync(["test-rule", "eloreendeles", "--file", Demo, "--write", "--new-message-id", "--data-dir", data], stdout, new StringWriter());
+
+        Assert.Equal(ExitCodes.Ok, first);
+        Assert.Equal(ExitCodes.Ok, second);
+        Assert.Equal(ExitCodes.Ok, third);
+        var text = stdout.ToString();
+        Assert.Contains("Állapot: needs_review, sorok: 5", text);
+        Assert.Contains("már szerepel a sorban", text);
+        var csv = Assert.Single(Directory.GetFiles(Path.Combine(data, "output")));
+        Assert.Equal(11, File.ReadAllLines(csv).Length); // header + 2 x 5 rows
+        Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+    }
+
+    [Fact]
+    public async Task Unknown_rule_is_a_usage_error()
+    {
+        using var tmp = new TempDir();
+        var data = PrepareMockData(tmp);
+        var stderr = new StringWriter();
+
+        var code = await CliApp.RunAsync(["test-rule", "nincs", "--file", Demo, "--data-dir", data], new StringWriter(), stderr);
+
+        Assert.Equal(ExitCodes.UsageError, code);
+        Assert.Contains("Nincs ilyen érvényes szabály", stderr.ToString());
+    }
+
+    private static string Demo => Path.Combine(TestPaths.SamplesRoot, "emails", "demo_eloreendeles_01.eml");
+
+    private static string PrepareMockData(TempDir tmp)
+    {
+        var data = tmp.Combine("data");
+        EfMailAgent.Configuration.SettingsBootstrapper.CopyDirectory(TestPaths.SampleRules, Path.Combine(data, "rules"));
+        tmp.WriteFile("data/appsettings.json", $$"""
+            {
+              "Server": { "Token": "{{EfMailAgent.Configuration.TokenGenerator.NewToken()}}" },
+              "Llm": { "Provider": "mock", "MockDir": {{System.Text.Json.JsonSerializer.Serialize(Path.Combine(TestPaths.SamplesRoot, "mock-responses"))}}, "MockDelayMs": 0 }
+            }
+            """);
+        return data;
+    }
+}

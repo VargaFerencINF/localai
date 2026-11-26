@@ -58,6 +58,24 @@ jobs:
           $token = (& $exe print-token --data-dir $data | Out-String).Trim()
           if ($LASTEXITCODE -ne 0 -or $token.Length -ne 43) { throw "print-token returned an invalid token" }
           if (-not (Test-Path (Join-Path $data 'rules/eloreendeles/rule.yaml'))) { throw "sample rules were not copied" }
+
+          # Full pipeline with the mock LLM: the demo email must produce the expected CSV (job_id and feldolgozva ignored).
+          & $exe test-rule eloreendeles --file samples/emails/demo_eloreendeles_01.eml --write --data-dir $data
+          if ($LASTEXITCODE -ne 0) { throw "test-rule --write failed with exit code $LASTEXITCODE" }
+          $csv = Get-ChildItem (Join-Path $data 'output') -Filter 'eloreendeles_*.csv' | Select-Object -First 1
+          if (-not $csv) { throw "no CSV was written" }
+          function Mask([byte[]] $bytes) {
+            $text = [System.Text.Encoding]::UTF8.GetString($bytes)
+            $lines = $text -split "`r`n"
+            for ($i = 1; $i -lt $lines.Length; $i++) {
+              if ($lines[$i].Length -gt 0) { $parts = $lines[$i].Split(';', 3); $lines[$i] = '<job_id>;<feldolgozva>;' + $parts[2] }
+            }
+            return ($lines -join "`r`n")
+          }
+          $actual = [System.IO.File]::ReadAllBytes($csv.FullName)
+          $expected = [System.IO.File]::ReadAllBytes((Resolve-Path samples/expected/demo_eloreendeles_01.csv))
+          if ($actual[0] -ne 0xEF -or $actual[1] -ne 0xBB -or $actual[2] -ne 0xBF) { throw "CSV has no UTF-8 BOM" }
+          if ((Mask $actual) -cne (Mask $expected)) { throw "CSV differs from samples/expected/demo_eloreendeles_01.csv" }
           Write-Host "Smoke test OK"
       - uses: actions/upload-artifact@v4
         with:

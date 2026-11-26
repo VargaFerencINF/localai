@@ -8,6 +8,7 @@ public sealed class AppSettings
     public PathSettings Paths { get; set; } = new();
     public CsvSettings Csv { get; set; } = new();
     public AppGeneralSettings App { get; set; } = new();
+    public WorkerSettings Worker { get; set; } = new();
 }
 
 public sealed class ServerSettings
@@ -69,10 +70,38 @@ public sealed class CsvSettings
     public string Delimiter { get; set; } = ";";
     public string DecimalSeparator { get; set; } = ",";
     public string Encoding { get; set; } = CsvEncodings.Utf8Bom;
+
+    /// <summary>How long to keep retrying when the CSV file is locked (e.g. open in Excel) before writing a _pending_ file.</summary>
+    public int LockRetrySeconds { get; set; } = 600;
+
+    public int LockRetryIntervalSeconds { get; set; } = 5;
 }
 
 public sealed class AppGeneralSettings
 {
     /// <summary>IANA or Windows time zone id used for every local timestamp we write (CSV, prompts).</summary>
     public string TimeZone { get; set; } = "Europe/Budapest";
+}
+
+public sealed class WorkerSettings
+{
+    public static readonly int[] DefaultRetryDelaysSeconds = [30, 120, 600];
+
+    /// <summary>
+    /// Backoff before each retry after a transport error. One initial attempt plus one retry per entry
+    /// (default: 30 s, 2 min, 10 min, i.e. 4 attempts in total). Null or empty means the default.
+    /// </summary>
+    public int[]? RetryDelaysSeconds { get; set; }
+
+    /// <summary>How long the worker pauses when the LLM server is unreachable; such pauses do not use up attempts.</summary>
+    public int LlmOutagePauseSeconds { get; set; } = 30;
+
+    /// <summary>Safety poll interval while the queue is empty (new jobs also wake the worker immediately).</summary>
+    public int IdlePollMilliseconds { get; set; } = 2000;
+
+    public IReadOnlyList<TimeSpan> EffectiveRetryDelays =>
+        (RetryDelaysSeconds is { Length: > 0 } ? RetryDelaysSeconds : DefaultRetryDelaysSeconds)
+        .Select(s => TimeSpan.FromSeconds(s)).ToArray();
+
+    public int MaxAttempts => EffectiveRetryDelays.Count + 1;
 }

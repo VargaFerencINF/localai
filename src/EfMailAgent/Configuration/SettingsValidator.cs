@@ -37,6 +37,18 @@ public static class SettingsValidator
         if (s.Csv.Encoding is not (CsvEncodings.Utf8Bom or CsvEncodings.Utf8))
             errors.Add($"Csv.Encoding ismeretlen: '{s.Csv.Encoding}' (megengedett: {CsvEncodings.Utf8Bom}, {CsvEncodings.Utf8}).");
 
+        if (s.Csv.LockRetrySeconds < 0)
+            errors.Add($"Csv.LockRetrySeconds nem lehet negatív: {s.Csv.LockRetrySeconds}.");
+        if (s.Csv.LockRetryIntervalSeconds < 1)
+            errors.Add($"Csv.LockRetryIntervalSeconds legalább 1 legyen: {s.Csv.LockRetryIntervalSeconds}.");
+
+        if (s.Worker.RetryDelaysSeconds is { } delays && delays.Any(d => d < 0))
+            errors.Add("Worker.RetryDelaysSeconds nem tartalmazhat negatív értéket.");
+        if (s.Worker.LlmOutagePauseSeconds < 1)
+            errors.Add($"Worker.LlmOutagePauseSeconds legalább 1 legyen: {s.Worker.LlmOutagePauseSeconds}.");
+        if (s.Worker.IdlePollMilliseconds < 50)
+            errors.Add($"Worker.IdlePollMilliseconds legalább 50 legyen: {s.Worker.IdlePollMilliseconds}.");
+
         foreach (var (name, value) in new[]
                  {
                      ("Paths.Rules", s.Paths.Rules), ("Paths.Output", s.Paths.Output),

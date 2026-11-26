@@ -134,16 +134,110 @@ and Inno Setup as described in DEV_MODE section 6.
 On Windows the exe sets `Console.OutputEncoding = UTF-8`, otherwise Hungarian characters are garbled in the default
 console code page.
 
+## Step 2
+
+### D-201 Retry semantics and LLM outages
+"Max 3 attempts" with three backoff values (30 s, 2 min, 10 min) is read as **1 initial attempt + 3 retries**
+(4 attempts), otherwise the 10 min value would never be used. Configurable as `Worker.RetryDelaysSeconds`.
+Transport errors are classified (`LlmErrorKind`):
+
+| Kind | Example | Effect |
+|---|---|---|
+| Unreachable | connection refused, DNS | job back to the queue **without** using an attempt, worker pauses `Worker.LlmOutagePauseSeconds` (30 s) |
+| Configuration | no model configured | same as Unreachable |
+| Timeout | no answer within `Llm.TimeoutSeconds` | counts as an attempt, backoff |
+| ServerError / ClientError | HTTP 5xx / 4xx (e.g. unknown model) | counts as an attempt, backoff |
+| Other | malformed envelope, missing mock answer | counts as an attempt, backoff |
+
+So a 30-minute Ollama outage (Step 8) leaves jobs queued instead of failing them. The outage is logged once at
+Warning and once at Information when the LLM is back.
+
+### D-202 No Dapper
+Plain `Microsoft.Data.Sqlite` with a small hand-written mapper. Timestamps are ISO 8601 UTC text (`O` format,
+fixed width, so text comparison = time order); Dapper's `DateTimeOffset` handling on SQLite would need custom type
+handlers anyway. WAL journal mode, 30 s busy timeout (the CLI and the service may share the database).
+Dequeue is a single `UPDATE ... RETURNING` statement, so taking a job is atomic.
+
+### D-203 Extra job columns (migration 2)
+Besides the Step 2 column list: `original_sender`, `prompt_system`, `prompt_user`, `repair_response`, `parsed_rows`
+(JSON with row status, reasons and values) and `duration_ms`. They feed the admin UI's job drawer (Step 6) and keep
+parsed rows safe if the CSV cannot be written. `raw_response` holds the first answer, `repair_response` the repair
+answer.
+
+### D-204 Message-ID canonical form (was planned as D-301)
+Implemented in `JobQueue.Enqueue`: trimmed and wrapped in `<...>`, so Thunderbird's bracket-less `headerMessageId`
+and the raw header value deduplicate to the same job and the CSV shows `<id@host>` as in the expected demo CSV.
+
+### D-205 Repair call
+Messages: system, user, assistant (the invalid answer, max 20 000 characters), user (Hungarian instruction plus the
+validation errors, max 30). Aggregate errors of the schema library ("properties", "items" ...) are dropped when more
+specific errors exist. A Markdown code fence around the JSON is unwrapped before validation (harmless, common with
+small models). A transport error during the repair call is handled like any transport error of the job.
+
+### D-206 Validation library and dates
+`JsonSchema.Net` 9.7.0 validates the generated schema (it also checks `format: date`). An extra check makes sure
+dates are real calendar dates in `yyyy-MM-dd` form.
+
+### D-207 Job outcome details
+- Zero rows: `needs_review`, no CSV file is touched, `last_error` = "A modell nem talált egyetlen tételt sem."
+- Rule deleted or disabled after the job was queued: `failed` with a clear message (can be retried later).
+- CSV write failure (not a lock): `failed`, but the parsed rows stay in `parsed_rows`; `POST /api/jobs/{id}/retry`
+  (Step 3) re-runs it.
+- Shutdown during processing: the job goes back to the queue without using an attempt (Step 7's graceful
+  shutdown requirement is covered already).
+
+### D-208 CSV details
+- Numbers: invariant format without thousand separators or trailing zeros (`2.50` -> `2,5`), decimal separator from
+  `Csv.DecimalSeparator`. Booleans: `igen` / `nem`. `null` -> empty cell.
+- Cells are quoted only when needed (delimiter, quote, CR or LF), quotes doubled (RFC 4180).
+- `email_datum` and `feldolgozva` use `App.TimeZone`, file name date tokens too.
+- Locked file: exclusive open is retried every `Csv.LockRetryIntervalSeconds` (5 s) for `Csv.LockRetrySeconds`
+  (600 s), then `<name>_pending_<jobId>.csv` is written and a warning logged. On Linux every `IOException` while
+  opening counts as a lock (there is no sharing-violation code), which only matters in tests.
+- `per_job` mode never appends: an existing name gets `_2`, `_3` ...
+- Header mismatch: `_v2`, `_v3` ... (the first file whose header matches, or a new one).
+- A file saved without a final line break is continued on a new line.
+
+### D-209 Original sender detection
+Heuristic over the body: a `Feladó:` / `From:` / `Von:` line counts only inside a header block (a forward marker
+such as `-------- Továbbított üzenet --------`, `---------- Forwarded message ---------`,
+`-----Original Message-----`, an Outlook `____` line, or another header line like `Elküldve:` / `Sent:` / `Tárgy:`
+within 4 lines). Of several candidates the first one outside the forwarder's own e-mail domain wins (the customer,
+not a colleague or our own quoted offer); if all are internal, the deepest one. Outlook's `Name [mailto:a@b]` is
+normalized to `Name <a@b>`. Verified on all sample emails (`samples/emails/index.json` has the expected values).
+
+### D-210 Prompt details
+- The user message starts with a Hungarian metadata block (forwarder, original sender or "nem azonosítható",
+  subject, received time, today, attachment names if any), then `<email>...</email>`.
+- A truncation note is placed **after** `</email>`, so it cannot be mistaken for e-mail content.
+- `<email>` / `</email>` inside the body are neutralized (`‹email›`) so the body cannot close the data block.
+- Placeholders are replaced in `_base/system.md`, `prompt.md` and skills, never in the e-mail body.
+  Extra placeholder: `{{original_sender}}`.
+
+### D-211 Ollama request
+`think` is always sent with the value of `Llm.Think` (default `false`, DEV_MODE). `options.num_ctx` is sent only
+when `Llm.NumCtx > 0`. If an older Ollama rejects `think` for a model, set it in the acceptance test
+(docs/WINDOWS_ACCEPTANCE.md). Health checks use a 5 s timeout.
+
+### D-212 test-rule command
+- `.eml` files are parsed with MimeKit 4.18.2 (headers, encoded words, multipart, HTML-only bodies, attachment names);
+  other files are the plain body, subject and sender come from `--subject` / `--from`.
+- Rows are printed as one block per row (field: value), which stays readable with 11 columns.
+- Without `--write` nothing is written (not even the mock prompt dump, which needs a job id).
+- With `--write` the job is enqueued with the email's Message-ID (or a generated one, or a new one with
+  `--new-message-id`), then exactly that job is taken (`TryDequeue`) and processed, so a running service does not
+  process it twice. A scheduled retry is left to the service.
+- Exit codes: 0 ok, 1 invalid rules, 2 configuration error, 3 usage error, 4 processing failed.
+
+### D-213 HTML to text
+A small converter (`Email/HtmlToText`) exists already; Step 3 reuses it for `bodyHtml`-only submissions.
+
+### D-214 Composition
+`ServiceRegistration.AddEfMailAgentCore` wires the pipeline with Microsoft DI; the CLI uses it now, the HTTP host
+(Step 3) will reuse it. `TimeProvider` is injected everywhere time matters, which keeps the retry tests
+deterministic.
+
 ## Planned for later steps (decided now, implemented later)
-
-### D-201 (Step 2) Retry semantics and LLM outages
-"Max 3 attempts" with three backoff values (30 s, 2 min, 10 min) is read as 1 initial attempt + 3 retries, otherwise
-the 10 min value would never be used. When the LLM server itself is unreachable (health check fails), the worker
-pauses instead of burning job attempts, so a 30-minute outage (Step 8) does not fail jobs.
-
-### D-301 (Step 3) Message-ID canonical form
-Thunderbird's `headerMessageId` has no angle brackets; the expected CSV shows `<fwd-demo-01@...>`. The exe stores and
-deduplicates the Message-ID in the canonical `<...>` form (trimmed, brackets added if missing).
 
 ### D-302 (Step 3) `/api/matchers` also returns `priority`
 The add-on's matching parity tests (shared vectors) need the priority to choose the best rule; the extra field is
