@@ -95,6 +95,46 @@ modell** a gépet.
 
 ---
 
+## 4. Minden rendelés külön fájlba (alapértelmezésként)
+
+**Állapot:** ötlet · **Felvéve:** 2026-11-26
+
+**Kérés:** minden új rendelés (levél) mindig **külön CSV fájlba** kerüljön, ne egy közös havi fájl végére.
+
+**Részletek, javaslat:**
+- Az előrendelés szabály alapértelmezett módja legyen „Levelenként külön fájl” (`per_job`), beszédes fájlnévvel,
+  pl. `eloreendeles_2026-11-26_Horgasz-Centrum_<rövid azonosító>.csv` (dátum + partner + egyedi rész).
+- Ehhez kell egy új helyettesítő a fájlnévben a partner nevére (ékezet és tiltott karakterek nélkül), és egy rövid
+  azonosító a teljes feladat-azonosító helyett.
+- Megfontolandó: választható mappaszerkezet (pl. `output\2026\11\`), hogy sok fájl esetén is átlátható maradjon.
+
+**Megvalósíthatóság:** egyszerű.
+
+**Addig is:** már most beállítható kézzel: Beállítások › Kimenet › az előrendelés szabálynál mód: „Levelenként külön
+fájl”, fájlnév pl. `eloreendeles_{yyyy}-{MM}-{dd}_{jobId}.csv`.
+
+---
+
+## 5. Áttekintés: a feldolgozott táblázat teljes nézetben
+
+**Állapot:** ötlet · **Felvéve:** 2026-11-26
+
+**Kérés:** az Áttekintésen egy feldolgozott levél eredménye **ne jobbról beúszó panelben** jelenjen meg, hanem
+**teljes szélességben, az egész táblázat egyszerre látható** legyen az alkalmazáson belül.
+
+**Részletek, javaslat:**
+- Saját oldal egy feladatnak (pl. „Feladat részletei”): felül a levél adatai röviden, alatta a kinyert sorok
+  **teljes táblázata** az összes oszloppal (vízszintes görgetés nélkül, amennyire lehet: tördelés, rögzített első
+  oszlopok), az ellenőrzendő sorok kiemelve.
+- Mellette vagy alatta lenyitható: az eredeti levél szövege, a nyers AI válasz.
+- Hasznos lehet: a táblázat letöltése / másolása (CSV vagy vágólap), és később a sorok javítása közvetlenül itt
+  (kapcsolódik a v2 „ellenőrző képernyő” ötlethez).
+- Opcionálisan az Áttekintés listájában egy sor lenyitva is mutathatná a tételeket.
+
+**Megvalósíthatóság:** egyszerű–közepes (csak a kezelőfelület változik, az adatok már megvannak).
+
+---
+
 ## Korábbról (lásd `docs/PROGRESS.md`, „Ideas for v2”)
 
 - Csatolmányok feldolgozása (xlsx, pdf, docx).
