@@ -58,7 +58,11 @@ if ($path.ToLowerInvariant().EndsWith('.eml')) {
 
 $messageId = $email['message-id']
 if ($NewMessageId -or -not $messageId) { $messageId = "<dev-submit-$([guid]::NewGuid().ToString('N'))@efmailagent.local>" }
-$receivedAt = if ($email.date) { ([DateTimeOffset]::Parse($email.date, [Globalization.CultureInfo]::InvariantCulture)).ToUniversalTime().ToString('o') } else { [DateTimeOffset]::UtcNow.ToString('o') }
+# The weekday of an RFC 5322 date is ignored (the DEV_MODE demo fixture says 'Tue' for a Wednesday; .NET would reject it).
+$receivedAt = if ($email.date) {
+    $dateText = ([string]$email.date) -replace '^\s*[A-Za-z]{3},\s*', ''
+    ([DateTimeOffset]::Parse($dateText, [Globalization.CultureInfo]::InvariantCulture)).ToUniversalTime().ToString('o')
+} else { [DateTimeOffset]::UtcNow.ToString('o') }
 
 $payload = [ordered]@{
     messageId       = $messageId

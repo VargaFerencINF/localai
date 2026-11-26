@@ -381,5 +381,11 @@ from `VERSION`. `build.ps1` calls it, so Linux CI and Windows produce the same X
 `scripts/simulate-thunderbird.mjs` gives the add-on its server URL and token through the fake `storage.managed`, the
 same way the policy will in production (Step 5).
 
+### D-412 Wrong weekday in the demo fixture
+`samples/emails/demo_eloreendeles_01.eml` (DEV_MODE 8.1, kept verbatim) says `Date: Tue, 25 Nov 2026 09:41:00 +0100`,
+but 25 November 2026 is a Wednesday. MimeKit and JavaScript ignore the weekday, .NET's `DateTimeOffset.Parse` rejects
+it. `scripts/dev-submit.ps1` therefore strips the weekday before parsing. The expected CSV (`2026-11-25 09:41`) is
+unaffected.
+
 ## Planned for later steps (decided now, implemented later)
 
