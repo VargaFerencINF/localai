@@ -2,6 +2,8 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
+    <!-- LibraryImport (source-generated P/Invoke) for the Windows console / message box calls. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <AssemblyName>EfMailAgent</AssemblyName>
     <RootNamespace>EfMailAgent</RootNamespace>
     <InvariantGlobalization>false</InvariantGlobalization>

@@ -138,6 +138,23 @@ $('login-form').addEventListener('submit', async (event) => {
   }
 });
 
+$('quit').addEventListener('click', async () => {
+  if (!confirmLeave()) return;
+  if (!confirm('Kilépsz az EfMailAgentből? A program leáll, és amíg újra el nem indítod, a beérkező levelek nem kerülnek feldolgozásra.')) return;
+  try {
+    await api('POST', '/quit');
+  } catch (error) {
+    toast(error.message, 'error', 8000);
+    return;
+  }
+  hasUnsavedChanges = () => false;
+  stopTimers();
+  closeDrawer();
+  $('app').hidden = true;
+  $('login').hidden = true;
+  $('stopped').hidden = false;
+});
+
 $('logout').addEventListener('click', async () => {
   if (!confirmLeave()) return;
   hasUnsavedChanges = () => false;
@@ -682,10 +699,13 @@ async function renderSettings(container) {
     }
   }
 
+  const ollamaCard = el('section', { class: 'card', id: 'ollama-wizard' });
+  const addonCard = el('section', { class: 'card', id: 'addon-section' });
   container.append(
     el('div', { class: 'page-header' }, el('div', {}, el('h1', { text: 'Beállítások' }), el('p', { class: 'muted', text: `Fájl: ${s.settingsFile}` }))),
     el('div', { class: 'stack' },
-      el('section', { class: 'card' }, el('h2', { text: 'AI (LLM)' }),
+      ollamaCard,
+      el('section', { class: 'card' }, el('h2', { text: 'AI (LLM) kapcsolat – kézi beállítás' }),
         el('div', { class: 'form-grid' }, field('Szolgáltató', provider), field('Szerver címe', baseUrl, 'Ollama: http://127.0.0.1:11434'), field('Modell', model), modelList,
           field('Temperature', temperature, '0 = determinisztikus'), field('Időkorlát (mp)', timeout), field('Kontextus (num_ctx)', numCtx, 'Ollama, token')),
         el('label', { class: 'switch' }, think, 'Gondolkodó mód (think) – általában kikapcsolva'),
@@ -697,6 +717,7 @@ async function renderSettings(container) {
         el('p', { class: 'muted small', text: `Jelenleg: ${s.outputFolderResolved}` }),
         el('h3', { text: 'CSV fájlok szabályonként' }),
         outputRules(rules, s.outputFolderResolved)),
+      addonCard,
       el('section', { class: 'card' }, el('h2', { text: 'CSV formátum' }),
         el('div', { class: 'form-grid' }, field('Elválasztó', delimiter), field('Tizedesjel', decimal), field('Kódolás', encoding),
           field('Zárolt fájl: várakozás (mp)', lockRetry, 'utána _pending_ fájl'))),
@@ -707,6 +728,174 @@ async function renderSettings(container) {
           field('Adatmappa', el('input', { type: 'text', value: s.dataDir, readonly: true })))),
       el('div', { class: 'row' }, el('button', { type: 'button', class: 'primary', onclick: save }, 'Mentés'), el('span', { class: 'muted small', text: 'Az AI-, CSV- és mappabeállítások újraindítás nélkül érvényesek; a port változásához újraindítás kell.' })),
       saveStatus));
+  drawOllamaWizard(ollamaCard);
+  drawAddonCard(addonCard);
+}
+
+// ---------- Beállítások: Ollama varázsló ----------
+
+function progressBar(percent, label) {
+  const bar = el('progress', { max: 100, 'aria-label': label });
+  if (percent !== null && percent !== undefined) bar.value = percent;
+  return bar;
+}
+
+async function drawOllamaWizard(card, baseUrlOverride) {
+  card.textContent = '';
+  card.append(el('h2', { text: 'AI telepítése és modellválasztás (Ollama)' }),
+    el('p', { class: 'muted', text: 'Lépésről lépésre: az Ollama (helyi AI szerver) telepítése, egy modell letöltése, majd a program beállítása erre a modellre. A levelek ezen a gépen maradnak.' }),
+    el('div', { class: 'row' }, el('span', { class: 'spinner' }), 'Ellenőrzés…'));
+  let st;
+  try {
+    st = await api('GET', `/ollama${baseUrlOverride ? `?baseUrl=${encodeURIComponent(baseUrlOverride)}` : ''}`);
+  } catch (error) {
+    card.lastChild.replaceWith(messageList([error.message]));
+    return;
+  }
+  card.lastChild.remove();
+
+  const url = el('input', { id: 'ollama-url', type: 'url', value: st.baseUrl, 'aria-label': 'Az Ollama címe' });
+  const recheck = el('button', { type: 'button', onclick: () => drawOllamaWizard(card, url.value) }, 'Újraellenőrzés');
+  const taskArea = el('div', { id: 'ollama-task' });
+  const step = (n, title, done, ...body) => el('div', { class: `wizard-step ${done ? 'done' : ''}` },
+    el('div', { class: 'step-num', text: done ? '✓' : String(n) }), el('div', { class: 'step-body' }, el('h3', { text: title }), ...body));
+
+  // 1. Ollama
+  const step1 = st.reachable
+    ? [el('p', { class: 'ok-text', text: `Az Ollama fut (verzió: ${st.version}).` })]
+    : [messageList([], [`Az Ollama nem érhető el ezen a címen${st.error ? ` (${st.error})` : ''}.`]),
+      st.installed ? el('p', { text: 'Az Ollama telepítve van, de nem fut: indítsd el a Start menüből (Ollama), majd kattints az Újraellenőrzésre.' }) : null,
+      st.canInstall
+        ? el('div', { class: 'row' }, el('button', { type: 'button', class: 'primary', id: 'ollama-install', onclick: async () => {
+          try { await api('POST', '/ollama/install'); watchTask(); } catch (error) { toast(error.message, 'error', 8000); }
+        } }, st.installed ? 'Ollama újratelepítése' : 'Ollama letöltése és telepítése'), el('span', { class: 'muted small', text: 'kb. 1 GB letöltés; rendszergazdai jog nem kell' }))
+        : el('div', {}, el('p', { class: 'muted', text: st.cannotInstallReason }),
+          el('a', { href: st.downloadPage, target: '_blank', rel: 'noopener' }, 'Az Ollama letöltése (ollama.com)'))];
+
+  // 2. Model
+  const installedNames = new Set((st.models ?? []).map((m) => m.name));
+  const isInstalled = (name) => installedNames.has(name) || installedNames.has(name.includes(':') ? name : `${name}:latest`);
+  const choices = [...st.choices];
+  for (const m of st.models ?? []) if (!choices.some((c) => c.name === m.name)) choices.push({ name: m.name, title: m.name, description: 'Már letöltött modell.', downloadGb: m.sizeGb, minRamGb: null });
+  let selected = st.currentProvider === 'ollama' && st.currentModel ? st.currentModel : (choices.find((c) => isInstalled(c.name))?.name ?? st.recommended);
+  const custom = el('input', { id: 'ollama-custom', type: 'text', placeholder: 'egyéb modell, pl. mistral-nemo:12b', 'aria-label': 'Egyéb modell neve', spellcheck: 'false' });
+  const rows = choices.map((c) => {
+    const radio = el('input', { type: 'radio', name: 'ollama-model', value: c.name, 'aria-label': c.title, checked: c.name === selected, onchange: () => { selected = c.name; custom.value = ''; updateButtons(); } });
+    return el('tr', {},
+      el('td', {}, radio),
+      el('td', {}, el('strong', { text: c.title }), c.name === st.recommended ? el('span', { class: 'badge done', text: 'ajánlott ehhez a géphez' }) : null,
+        isInstalled(c.name) ? el('span', { class: 'badge valid', text: 'letöltve' }) : null,
+        el('div', { class: 'small muted', text: `${c.name} · ${c.description}` })),
+      el('td', { class: 'nowrap small', text: c.downloadGb ? `kb. ${String(c.downloadGb).replace('.', ',')} GB` : '' }),
+      el('td', { class: 'nowrap small', text: c.minRamGb ? `${c.minRamGb} GB RAM-tól` : '' }));
+  });
+  custom.addEventListener('input', () => {
+    if (custom.value.trim()) { selected = custom.value.trim(); for (const r of card.querySelectorAll('input[name=ollama-model]')) r.checked = false; }
+    updateButtons();
+  });
+  const pull = el('button', { type: 'button', id: 'ollama-pull', onclick: async () => {
+    try { await api('POST', '/ollama/pull', { model: selected, baseUrl: url.value }); watchTask(); } catch (error) { toast(error.body?.error ?? error.message, 'error', 8000); }
+  } }, 'Letöltés');
+  const apply = el('button', { type: 'button', class: 'primary', id: 'ollama-apply', onclick: async () => {
+    applyStatus.textContent = '';
+    try {
+      await api('POST', '/ollama/apply', { model: selected, baseUrl: url.value });
+      toast(`Az AI beállítva: ${selected}`, 'ok');
+      route(); // redraw the settings page with the new values
+    } catch (error) {
+      applyStatus.append(messageList(error.body?.errors ?? [error.body?.error ?? error.message]));
+    }
+  } }, 'Használat ezzel a modellel');
+  const applyStatus = el('div');
+  function updateButtons() {
+    const have = isInstalled(selected);
+    pull.disabled = !st.reachable || have || !selected;
+    apply.disabled = !st.reachable || !have;
+    pull.textContent = selected ? `${selected} letöltése` : 'Letöltés';
+  }
+  updateButtons();
+
+  const step2 = st.reachable
+    ? [el('p', { class: 'muted small', text: `Ennek a gépnek kb. ${st.ramGb} GB memóriája van. Nagyobb modell pontosabb, de lassabb; videókártya nélkül a 4–8B modellek ajánlottak.` }),
+      el('div', { class: 'table-wrap' }, el('table', { class: 'model-table' }, el('tbody', {}, rows))), custom,
+      el('div', { class: 'row' }, pull, apply), applyStatus]
+    : [el('p', { class: 'muted', text: 'Előbb az Ollamának futnia kell (1. lépés).' })];
+
+  const configured = st.currentProvider === 'ollama' && st.currentModel && isInstalled(st.currentModel);
+  add(card, el('div', { class: 'row' }, el('label', { class: 'field grow' }, el('span', { text: 'Az Ollama címe' }), url), recheck),
+    step(1, 'Ollama (helyi AI szerver)', st.reachable, ...step1),
+    taskArea,
+    step(2, 'Modell letöltése és kiválasztása', configured, ...step2),
+    configured ? el('p', { class: 'ok-text', text: `Kész: a program az Ollama ${st.currentModel} modelljével dolgozik. A Tesztkonzolban ki is próbálhatod.` }) : null);
+
+  function drawTask(t) {
+    taskArea.textContent = '';
+    if (!t || t.phase === 'idle') return;
+    add(taskArea, el('div', { class: `task-box ${t.failed ? 'failed' : ''}` },
+      el('div', { class: 'row' }, t.running ? el('span', { class: 'spinner' }) : null, el('span', { text: t.message })),
+      t.running ? progressBar(t.percent, t.message) : null));
+  }
+  async function watchTask() {
+    for (;;) {
+      let t;
+      try { t = await api('GET', '/ollama/task'); } catch { return; }
+      if (!card.isConnected) return;
+      drawTask(t);
+      if (!t.running) {
+        if (!t.failed) { await drawOllamaWizard(card, url.value); drawTaskAfter(t); }
+        return;
+      }
+      await new Promise((r) => setTimeout(r, 1000));
+    }
+  }
+  function drawTaskAfter(t) {
+    const area = card.querySelector('#ollama-task');
+    if (area) { area.textContent = ''; area.append(el('div', { class: 'task-box' }, el('span', { text: t.message }))); }
+  }
+  if (st.task?.running) watchTask();
+  else drawTask(st.task?.failed ? st.task : null);
+}
+
+// ---------- Beállítások: Thunderbird bővítmény ----------
+
+async function drawAddonCard(card, resultMessages) {
+  card.textContent = '';
+  card.append(el('h2', { text: 'Thunderbird bővítmény' }));
+  let st;
+  try {
+    st = await api('GET', '/addon');
+  } catch (error) {
+    card.append(messageList([error.message]));
+    return;
+  }
+  const lines = el('dl', { class: 'meta' });
+  const installs = st.installations ?? [];
+  add(lines,
+    ...meta('Állapot', st.ok ? 'rendben, telepítve' : installs.length ? 'nincs telepítve vagy javítandó' : 'a Thunderbird nem található ezen a gépen'),
+    ...meta('Thunderbird', installs.length ? installs.map((i) => `${i.dir} (${i.version ?? '?'})${i.ok ? ' – rendben' : i.entry ? ' – javítandó' : ' – nincs telepítve'}`).join('; ') : '–'),
+    ...meta('Bővítmény verzió', `${st.installedVersion ?? '–'} telepítve / ${st.bundledVersion ?? '–'} a programban`));
+  const result = el('div');
+  if (resultMessages) result.append(resultMessages);
+  const button = el('button', { type: 'button', class: st.ok ? '' : 'primary', id: 'addon-install', onclick: async () => {
+    button.disabled = true;
+    result.textContent = '';
+    result.append(el('div', { class: 'row' }, el('span', { class: 'spinner' }), st.needsElevation ? 'Telepítés… (fogadd el a Windows engedélykérését)' : 'Telepítés…'));
+    let messages;
+    try {
+      const r = await api('POST', '/addon/install');
+      messages = messageList([], [], r.messages.join(' '));
+    } catch (error) {
+      messages = messageList(error.body?.messages ?? [error.message]);
+    }
+    drawAddonCard(card, messages);
+  } }, st.ok ? 'Újratelepítés / javítás' : 'Telepítés a Thunderbirdbe');
+  add(card,
+    el('p', { class: 'muted', text: 'A bővítmény figyeli a beérkező leveleket, és a megfelelő tárgyúakat elküldi a programnak. Egy gombnyomással telepíthető a gépen lévő Thunderbirdbe (a szerver címe és a token automatikusan beállítódik).' }),
+    lines,
+    st.thunderbirdRunning ? messageList([], ['A Thunderbird most fut: a telepítés után zárd be teljesen és indítsd újra.']) : null,
+    st.error ? messageList([st.error]) : null,
+    el('div', { class: 'row' }, button, st.needsElevation ? el('span', { class: 'muted small', text: 'A Windows rendszergazdai jóváhagyást fog kérni.' }) : null),
+    result);
 }
 
 /** Per-rule CSV file name and mode (rule.yaml output.file / output.mode), saved one rule at a time. */
@@ -800,6 +989,7 @@ async function renderLogs(container) {
   try {
     const session = await api('GET', '/session');
     $('version').textContent = `v${session.version}`;
+    $('quit').hidden = !session.canQuit;
     const expiredLink = new URLSearchParams(location.search).get('link') === 'lejart';
     if (expiredLink) history.replaceState(null, '', location.pathname + location.hash);
     if (session.authenticated) showApp();

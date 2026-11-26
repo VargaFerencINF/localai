@@ -86,23 +86,43 @@ public static class CliApp
         root.SetAction(async (parse, cancellationToken) =>
         {
             var openBrowser = AdminLauncher.ShouldOpenBrowser(parse.GetValue(noBrowserOption));
-            if (openBrowser && await AdminLauncher.OpenRunningInstanceAsync(parse.GetValue(dataDirOption), output ?? Console.Out, cancellationToken))
+            // Double click on Windows: behave like a desktop app (no console window, errors in a message box).
+            var desktop = openBrowser && OperatingSystem.IsWindows() && WindowsConsole.DetachIfOwnConsole();
+            var errorWriter = desktop ? new StringWriter() : error;
+            var outputWriter = desktop ? TextWriter.Null : output;
+
+            if (openBrowser && await AdminLauncher.OpenRunningInstanceAsync(parse.GetValue(dataDirOption), outputWriter, cancellationToken))
                 return ExitCodes.Ok;
             int code;
-            using (var context = AgentContextFactory.Create(parse.GetValue(dataDirOption), error, LogEventLevel.Information))
+            using (var context = AgentContextFactory.Create(parse.GetValue(dataDirOption), errorWriter, LogEventLevel.Information))
                 code = context is null ? ExitCodes.ConfigurationError : await RunCommand.RunAsync(context, openBrowser, cancellationToken);
             if (code != ExitCodes.Ok && openBrowser)
             {
-                // Started with a double click: keep the console window open so the error can be read.
-                error.WriteLine();
-                error.WriteLine("Az EfMailAgent nem tudott elindulni (a hiba oka fent olvasható). Nyomj Entert a bezáráshoz.");
-                Console.ReadLine();
+                if (desktop && OperatingSystem.IsWindows())
+                {
+                    WindowsConsole.ShowError(StartFailureText(code, errorWriter.ToString() ?? ""));
+                }
+                else
+                {
+                    // Started from a console: keep it open so the error can be read.
+                    error.WriteLine();
+                    error.WriteLine("Az EfMailAgent nem tudott elindulni (a hiba oka fent olvasható). Nyomj Entert a bezáráshoz.");
+                    Console.ReadLine();
+                }
             }
             return code;
         });
 
         return root;
     }
+
+    internal static string StartFailureText(int code, string details) =>
+        "Az EfMailAgent nem tudott elindulni.\n\n" + (code switch
+        {
+            ExitCodes.PortInUse => "A 127.0.0.1-en beállított portot (alapból 47811) egy másik program használja.",
+            ExitCodes.ConfigurationError => details.Trim().Length > 0 ? details.Trim() : "A beállítások hibásak vagy az adatmappa nem írható.",
+            _ => $"Hibakód: {code}.",
+        }) + "\n\nRészletek a naplóban: C:\\ProgramData\\EfMailAgent\\logs";
 
     public static Task<int> RunAsync(string[] args, TextWriter? output = null, TextWriter? error = null)
     {

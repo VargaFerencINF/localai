@@ -693,3 +693,37 @@ The installer creates "EfMailAgent kezelőfelület" in the Start menu (always) a
 default), both pointing at `EfMailAgent.exe` without arguments (start or open, D-902). A failed double-click start
 keeps the console open until Enter so the reason can be read.
 
+## Version 1.2.0
+
+### D-1001 Desktop app window without a new UI framework
+User request: the exe should open like a desktop application. Options were a WebView2 host (WinForms/WPF:
+`net10.0-windows`, WebView2 runtime, Windows-only build and tests) or the installed Chromium browser in app mode.
+Chosen: Microsoft Edge (then Chrome) with `--app=<login link>` and its own `--user-data-dir`
+(`%LOCALAPPDATA%\EfMailAgent\app-window`): a window without tabs and address bar, with its own taskbar entry, no new
+dependency, the same UI and tests on every OS. Fallback: default browser. Edge ships with Windows 10/11 and
+Server 2022; on older servers Edge or Chrome has to be installed (documented).
+
+### D-1002 No console window on double click
+The exe stays a console-subsystem program (CLI, service and installer calls need the exit codes and output). When
+the console was created only for it (GetConsoleProcessList == 1, i.e. double click), it calls FreeConsole and shows
+start errors in a message box; started from a command prompt it behaves as before. The window can be closed while the
+program keeps processing mail; "Kilépés a programból" (POST /admin/api/quit, session + CSRF, refused for the Windows
+service) stops it.
+
+### D-1003 Thunderbird add-on from the UI
+Beállítások shows the add-on status and installs it with one click. Elevated processes (the LocalSystem service, an
+elevated app) install in-process; otherwise the exe runs itself with `install-addon` and the `runas` verb, so Windows
+shows the UAC prompt; a declined prompt (ERROR_CANCELLED) and the install-addon exit codes become Hungarian messages.
+Only policy mode is offered (it also hands over the server URL and token); profile mode stays a CLI option.
+
+### D-1004 Ollama setup wizard
+Beállítások gets a guided Ollama setup: detection (`/api/version`, `/api/tags`), installation (download of
+`https://ollama.com/download/OllamaSetup.exe`, Authenticode check: valid and signed by Ollama, then the Inno Setup
+installer with `/SILENT`, then waiting for the API and starting the Ollama app if needed), model choice (curated list
+with sizes and memory needs, a recommendation from the physical memory, installed models, free name validated by a
+pattern), model download through `/api/pull` with streamed progress, and switching the settings to the model through
+the normal settings validation. Installing is offered only on Windows when the program was started by a person: a
+service cannot start an installer on the user's desktop (it shows the download link instead); model downloads work in
+both cases. One background task at a time; the UI polls its state. The model list is a recommendation only: names
+change in the Ollama library, so any name can be entered and a missing one gives a Hungarian hint.
+

@@ -12,6 +12,7 @@ import { createRequire } from 'node:module';
 import { spawn, execFileSync } from 'node:child_process';
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createHmac, randomBytes } from 'node:crypto';
+import http from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -150,6 +151,35 @@ function loginLink(page) {
   const payload = `${Math.floor(Date.now() / 1000)}.${randomBytes(12).toString('base64url')}`;
   const signature = createHmac('sha256', `efmailagent-login-link:${token}`).update(payload).digest('base64url');
   return `${ADMIN}login?code=${encodeURIComponent(`${payload}.${signature}`)}${page ? `&page=${page}` : ''}`;
+}
+
+/** A tiny stand-in for Ollama (version, tags, streamed model download, chat) for the setup wizard. */
+function startFakeOllama() {
+  const models = ['llama3.2:1b'];
+  const srv = http.createServer(async (req, res) => {
+    const json = (code, body) => { res.writeHead(code, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(body)); };
+    let body = '';
+    for await (const chunk of req) body += chunk;
+    if (req.url === '/api/version') return json(200, { version: '0.12.3' });
+    if (req.url === '/api/tags') return json(200, { models: models.map((m) => ({ name: m, model: m, size: 2_000_000_000 })) });
+    if (req.url === '/api/pull') {
+      const { model } = JSON.parse(body || '{}');
+      res.writeHead(200, { 'Content-Type': 'application/x-ndjson' });
+      const send = (o) => res.write(`${JSON.stringify(o)}\n`);
+      send({ status: 'pulling manifest' });
+      for (let done = 0; done <= 2_600_000_000; done += 520_000_000) {
+        send({ status: 'pulling abc', digest: 'sha256:abc', total: 2_600_000_000, completed: done });
+        await new Promise((r) => setTimeout(r, 150));
+      }
+      send({ status: 'verifying sha256 digest' });
+      send({ status: 'success' });
+      if (!models.includes(model)) models.push(model);
+      return res.end();
+    }
+    if (req.url === '/api/chat') return json(200, { message: { role: 'assistant', content: '{"rows": []}' }, done: true });
+    json(404, { error: 'not found' });
+  });
+  return new Promise((resolve) => srv.listen(0, '127.0.0.1', () => resolve({ srv, url: `http://127.0.0.1:${srv.address().port}` })));
 }
 
 // ---------- page helpers ----------
@@ -516,7 +546,51 @@ try {
     assert(readFileSync(newFile, 'utf8').startsWith('\uFEFFjob_id;'), 'az új fájl nem fejléccel kezdődik');
   });
 
-  await section('9. Napló');
+  await section('9. Beállítások: Thunderbird bővítmény és AI telepítő (Ollama)');
+  await check('Thunderbird bővítmény: állapot és egy gombos telepítés, érthető eredménnyel', async () => {
+    await go(page, '#/beallitasok');
+    await page.waitForSelector('#addon-section #addon-install');
+    await page.click('#addon-section #addon-install');
+    await until(async () => !(await page.locator('#addon-section .spinner').count()) && (await page.locator('#addon-section .messages li').count()) > 0,
+      'nincs eredmény a telepítés után', 60_000, 500);
+    const text = await page.textContent('#addon-section');
+    if (process.env.EXPECT_ADDON_INSTALL) assert(text.includes('Indítsd újra a Thunderbirdöt') && text.includes('rendben, telepítve'), `a telepítés nem sikerült: ${text}`);
+    else assert(text.includes('Thunderbird'), text);
+    await shot(page, '10a-thunderbird');
+  });
+  const fakeOllama = await startFakeOllama();
+  await check('AI telepítő: nem futó Ollamánál érthető teendő (telepítés gomb vagy letöltési link)', async () => {
+    await page.waitForSelector('#ollama-wizard #ollama-url');
+    await page.fill('#ollama-url', 'http://127.0.0.1:9');
+    await page.click('#ollama-wizard >> text=Újraellenőrzés');
+    await until(async () => (await page.textContent('#ollama-wizard')).includes('nem érhető el'), 'nem jelzi, hogy az Ollama nem fut');
+    const text = await page.textContent('#ollama-wizard');
+    assert((await page.locator('#ollama-install').count()) > 0 || text.includes('Az Ollama letöltése (ollama.com)'), 'nincs telepítés gomb és letöltési link sem');
+  });
+  await check('AI telepítő: futó Ollama, modellek ajánlással, letöltés folyamatjelzővel', async () => {
+    await page.fill('#ollama-url', fakeOllama.url);
+    await page.click('#ollama-wizard >> text=Újraellenőrzés');
+    await until(async () => (await page.textContent('#ollama-wizard')).includes('Az Ollama fut (verzió: 0.12.3)'), 'nem ismerte fel a futó Ollamát');
+    assert((await page.textContent('#ollama-wizard')).includes('ajánlott ehhez a géphez'), 'nincs ajánlott modell');
+    await page.check('#ollama-wizard input[value="qwen3:4b"]');
+    await page.click('#ollama-pull');
+    await page.waitForSelector('#ollama-task progress');
+    await shot(page, '10b-ollama-letoltes');
+    await until(async () => (await page.textContent('#ollama-wizard')).includes('qwen3:4b modell letöltve'), 'a letöltés nem fejeződött be', 30_000, 300);
+    const row = page.locator('#ollama-wizard tr', { hasText: 'Qwen3 4B' });
+    assert((await row.textContent()).includes('letöltve'), 'a modell nem jelölődött letöltöttnek');
+  });
+  await check('AI telepítő: „Használat ezzel a modellel” beállítja a programot', async () => {
+    await page.check('#ollama-wizard input[value="qwen3:4b"]');
+    await page.click('#ollama-apply');
+    await until(async () => (await page.textContent('#ollama-wizard')).includes('Kész: a program az Ollama qwen3:4b modelljével dolgozik'), 'nincs kész állapot', 15_000);
+    assert((await page.inputValue('#set-provider')) === 'ollama' && (await page.inputValue('#set-model')) === 'qwen3:4b', 'a kézi beállításokban nem az új modell látszik');
+    await shot(page, '10c-ollama-kesz');
+    await go(page, '#/attekintes');
+    await until(async () => (await page.textContent('.grid-cards')).includes('qwen3:4b'), 'az Áttekintés nem az új modellt mutatja');
+  });
+
+  await section('10. Napló');
   await check('a napló mutatja a feldolgozásokat; a szűrők kompakt méretűek', async () => {
     await go(page, '#/naplo');
     await until(async () => (await page.locator('.log-line').count()) > 5, 'kevés naplósor');
@@ -532,7 +606,17 @@ try {
     }, 'nem csak hibák látszanak');
   });
 
-  await section('10. Akadálymentesség, elrendezés, sötét mód, telefon');
+  await section('11. Akadálymentesség, elrendezés, sötét mód, telefon');
+  await check('egyik oldalon sem jelenik meg „null” vagy „undefined” szöveg', async () => {
+    const bad = [];
+    for (const hash of ['#/attekintes', '#/szabalyok', '#/tesztkonzol', '#/beallitasok']) { // the log shows data, not UI text
+      await go(page, hash);
+      await page.waitForTimeout(800);
+      const text = await page.evaluate(() => document.getElementById('page').innerText);
+      if (/(^|\s)(null|undefined)(\s|$)/m.test(text.replace(/"[^"]*"/g, ''))) bad.push(hash);
+    }
+    assert(!bad.length, `„null” / „undefined” látszik: ${bad.join(', ')}`);
+  });
   await check('minden látható mezőnek és gombnak van neve', async () => {
     const bad = [];
     for (const hash of ['#/attekintes', '#/szabalyok', '#/tesztkonzol', '#/beallitasok', '#/naplo']) {
@@ -562,7 +646,7 @@ try {
     });
   }
 
-  await section('11. Kijelentkezés');
+  await section('12. Kijelentkezés és kilépés');
   await check('kijelentkezés után a belső oldalak nem érhetők el', async () => {
     await page.click('#logout');
     await page.waitForSelector('#login:not([hidden])');
@@ -571,6 +655,23 @@ try {
     assert(await page.isHidden('#app'), 'kijelentkezve is látszik az alkalmazás');
   });
 
+  if (server) {
+    await check('„Kilépés a programból”: megerősítés után a program leáll, az ablak ezt jelzi', async () => {
+      await login(page);
+      await page.waitForSelector('#quit:not([hidden])');
+      dialogAnswers.push(true, true);
+      await page.click('#quit');
+      await page.waitForSelector('#stopped:not([hidden])');
+      await until(() => server.exitCode !== null, 'a program nem állt le', 15_000, 200);
+      await shot(page, '13-kilepes');
+    });
+  } else if (process.env.EXPECT_SERVICE) {
+    await check('szolgáltatásként futva nincs „Kilépés” gomb (a szolgáltatást a Windows kezeli)', async () => {
+      await login(page);
+      assert(await page.isHidden('#quit'), 'a Kilépés gomb látszik a szolgáltatásnál');
+    });
+  }
+
   await check('nem volt JavaScript-hiba a böngésző konzolon', async () => {
     // A refused request (401 wrong token, 422 invalid input) is logged by the browser but is an expected answer.
     const real = consoleErrors.filter((e) => !/status of (401|409|422)/.test(e));
@@ -578,6 +679,7 @@ try {
   });
 
   await browser.close();
+  fakeOllama.srv.close();
 } catch (error) {
   results.push({ name: 'a teszt futása', ok: false, error: error.stack });
   console.error(error);

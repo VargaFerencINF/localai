@@ -26,11 +26,16 @@ public static class AdminLauncher
 
     public static string PlainUrl(EffectiveSettings settings) => $"http://127.0.0.1:{settings.Settings.Server.Port}/admin/";
 
-    /// <summary>Returns null on success, otherwise the reason (Hungarian).</summary>
+    /// <summary>
+    /// Opens the UI as a desktop app window (Edge / Chrome app mode), else in the default browser.
+    /// Returns null on success, otherwise the reason (Hungarian).
+    /// </summary>
     public static string? TryOpen(string url)
     {
         if (!string.IsNullOrEmpty(Environment.GetEnvironmentVariable(NoBrowserVariable)))
             return $"a böngésző megnyitása ki van kapcsolva ({NoBrowserVariable})";
+        if (AppWindow.TryOpen(url) is null)
+            return null;
         try
         {
             using var process = Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });

@@ -293,6 +293,8 @@ jobs:
         shell: pwsh
         env:
           NODE_PATH: ${{ runner.temp }}\pw\node_modules
+          EXPECT_ADDON_INSTALL: "1"   # the one-click install must succeed into the registered (fake) Thunderbird
+          EXPECT_SERVICE: "1"         # no "Kilépés" button for the Windows service
         run: |
           $token = (Get-Content 'C:\ProgramData\EfMailAgent\appsettings.json' -Raw | ConvertFrom-Json).Server.Token
           node scripts/ui-test.mjs --url http://127.0.0.1:47811 --token $token --out "$env:RUNNER_TEMP\ui-test-installed"

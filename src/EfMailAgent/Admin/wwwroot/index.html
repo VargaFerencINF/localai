@@ -39,6 +39,7 @@
         <a href="#/beallitasok" data-page="beallitasok">Beállítások</a>
         <a href="#/naplo" data-page="naplo">Napló</a>
       </nav>
+      <button id="quit" type="button" class="ghost" hidden title="A program leáll; a szolgáltatásként telepített példányt nem érinti">Kilépés a programból</button>
       <button id="logout" type="button" class="ghost">Kijelentkezés</button>
     </aside>
     <main id="page" class="content" tabindex="-1"></main>
@@ -52,6 +53,14 @@
     <div id="drawer-body" class="drawer-body"></div>
   </aside>
   <div id="drawer-backdrop" class="backdrop" hidden></div>
+  <div id="stopped" class="login" hidden>
+    <div class="login-card">
+      <img src="favicon.svg" alt="" width="56" height="56">
+      <h1>Az EfMailAgent leállt</h1>
+      <p class="muted">Ezt az ablakot bezárhatod. Újraindítás: Start menü vagy asztal, „EfMailAgent kezelőfelület”.<br>
+        Amíg a program nem fut, a beérkező levelek nem kerülnek feldolgozásra (a Thunderbird bővítmény később pótolja őket).</p>
+    </div>
+  </div>
   <div id="toasts" class="toasts" aria-live="polite"></div>
 </body>
 </html>

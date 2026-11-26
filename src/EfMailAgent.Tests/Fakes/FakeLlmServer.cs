@@ -36,6 +36,20 @@ public sealed class FakeLlmServer : IAsyncDisposable
 
     public int CallCount => ChatRequests.Count;
 
+    /// <summary>NDJSON lines streamed by /api/pull (Ollama model download); the model is added to Models after "success".</summary>
+    public Func<string, IReadOnlyList<string>> PullLines { get; set; } = model =>
+    [
+        """{"status":"pulling manifest"}""",
+        """{"status":"pulling aaa","digest":"sha256:aaa","total":4000,"completed":1000}""",
+        """{"status":"pulling aaa","digest":"sha256:aaa","total":4000,"completed":4000}""",
+        """{"status":"verifying sha256 digest"}""",
+        """{"status":"writing manifest"}""",
+        """{"status":"success"}""",
+    ];
+
+    /// <summary>Served at /download/OllamaSetup.exe.</summary>
+    public byte[] SetupBytes { get; set; } = new byte[300_000];
+
     public static async Task<FakeLlmServer> StartAsync()
     {
         var builder = WebApplication.CreateSlimBuilder();
@@ -47,6 +61,21 @@ public sealed class FakeLlmServer : IAsyncDisposable
         app.MapPost("/api/chat", (Delegate)((HttpContext context) => server.ChatAsync(context, ollama: true)));
         app.MapPost("/v1/chat/completions", (Delegate)((HttpContext context) => server.ChatAsync(context, ollama: false)));
         app.MapGet("/api/tags", () => Results.Json(new { models = server.Models.Select(m => new { name = m, model = m }) }));
+        app.MapGet("/api/version", () => Results.Json(new { version = "0.12.3" }));
+        app.MapPost("/api/pull", async (HttpContext context) =>
+        {
+            var body = (await JsonNode.ParseAsync(context.Request.Body))!.AsObject();
+            var model = body["model"]!.GetValue<string>();
+            context.Response.ContentType = "application/x-ndjson";
+            foreach (var line in server.PullLines(model))
+            {
+                await context.Response.WriteAsync(line + "\n");
+                await context.Response.Body.FlushAsync();
+                if (line.Contains("\"success\""))
+                    server.Models = [.. server.Models, model];
+            }
+        });
+        app.MapGet("/download/OllamaSetup.exe", () => Results.Bytes(server.SetupBytes, "application/octet-stream"));
         app.MapGet("/v1/models", () => Results.Json(new { @object = "list", data = server.Models.Select(m => new { id = m, @object = "model" }) }));
 
         await app.StartAsync();

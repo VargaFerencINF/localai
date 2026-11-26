@@ -20,6 +20,8 @@ public sealed record FileSaveRequest(string? Content);
 public sealed record EnabledRequest(bool Enabled);
 
 public sealed record OutputRequest(string? Mode, string? File);
+
+public sealed record OllamaModelRequest(string? Model, string? BaseUrl);
 public sealed record SkillRequest(string? FileName, string? Content);
 public sealed record CreateRuleRequest(string? Id, string? Name, string? CopyFrom);
 public sealed record TestRequest(string? RuleId, string? Subject, string? From, string? Body, DateTimeOffset? ReceivedAt);
@@ -62,8 +64,23 @@ public static class AdminEndpoints
         });
 
         // ---- session ----
-        api.MapGet("/session", (HttpContext http, AdminSessions sessions) =>
-            Results.Ok(new { authenticated = sessions.IsValid(http.Request.Cookies[AdminSessions.CookieName]), version = VersionInfo.Current }));
+        api.MapGet("/session", (HttpContext http, AdminSessions sessions, Hosting.RuntimeInfo runtime) =>
+            Results.Ok(new { authenticated = sessions.IsValid(http.Request.Cookies[AdminSessions.CookieName]), version = VersionInfo.Current,
+                canQuit = runtime.QuitAllowed }));
+
+        // Desktop app / console instance: the UI can stop the program (the Windows service is stopped in Windows).
+        api.MapPost("/quit", (Hosting.RuntimeInfo runtime, Microsoft.Extensions.Hosting.IHostApplicationLifetime lifetime, ILoggerFactory loggers) =>
+        {
+            if (!runtime.QuitAllowed)
+                return Results.Json(new ErrorResponse("Az EfMailAgent Windows szolgáltatásként fut, a Szolgáltatások között állítható le."), statusCode: StatusCodes.Status409Conflict);
+            loggers.CreateLogger("EfMailAgent.Admin").LogInformation("Kilépés a kezelőfelületről.");
+            _ = Task.Run(async () =>
+            {
+                await Task.Delay(500);
+                lifetime.StopApplication();
+            });
+            return Results.Ok(new { stopping = true });
+        });
 
         api.MapPost("/login", async (HttpContext http, LoginRequest request, AdminSessions sessions, ILoggerFactory loggers) =>
         {
@@ -86,7 +103,7 @@ public static class AdminEndpoints
         });
 
         // ---- overview & jobs ----
-        api.MapGet("/overview", async (LlmHealthCache health, JobQueue queue, RuleRepository rules, EffectiveSettings settings, JobWorker worker,
+        api.MapGet("/overview", async (LlmHealthCache health, JobQueue queue, RuleRepository rules, EffectiveSettings settings, JobWorker worker, AddonSetupService addonSetup,
             CancellationToken cancellationToken) =>
         {
             var llm = await health.GetAsync(cancellationToken);
@@ -115,8 +132,37 @@ public static class AdminEndpoints
                     invalid = set.InvalidFolders,
                     errors = set.Issues.Count(i => !i.IsWarning),
                 },
-                addon = AddonSummary(settings),
+                addon = addonSetup.Status(),
             });
+        });
+
+        // Guided Ollama setup: detect, install (Windows), download a model with progress, switch the settings to it.
+        api.MapGet("/ollama", async (OllamaSetupService ollama, string? baseUrl, CancellationToken cancellationToken) =>
+            Results.Ok(await ollama.StatusAsync(baseUrl, cancellationToken)));
+        api.MapGet("/ollama/task", (OllamaSetupService ollama) => Results.Ok(ollama.CurrentTask));
+        api.MapPost("/ollama/install", (OllamaSetupService ollama) =>
+        {
+            ollama.StartInstall();
+            return Results.Accepted(value: ollama.CurrentTask);
+        });
+        api.MapPost("/ollama/pull", (OllamaModelRequest request, OllamaSetupService ollama) =>
+        {
+            ollama.StartPull(request.Model, request.BaseUrl);
+            return Results.Accepted(value: ollama.CurrentTask);
+        });
+        api.MapPost("/ollama/apply", (OllamaModelRequest request, OllamaSetupService ollama) =>
+        {
+            var result = ollama.Apply(request.Model, request.BaseUrl);
+            return result.Saved ? Results.Ok(result) : Results.Json(result, statusCode: StatusCodes.Status422UnprocessableEntity);
+        });
+
+        // Thunderbird add-on: status and one-click install / repair (UAC prompt when not elevated).
+        api.MapGet("/addon", (AddonSetupService addonSetup) => Results.Ok(addonSetup.Status()));
+        api.MapPost("/addon/install", async (AddonSetupService addonSetup, CancellationToken cancellationToken) =>
+        {
+            var result = await addonSetup.InstallAsync(cancellationToken);
+            return Results.Json(new { ok = result.Ok, messages = result.Messages, status = addonSetup.Status() },
+                statusCode: result.Ok ? StatusCodes.Status200OK : StatusCodes.Status422UnprocessableEntity);
         });
 
         api.MapGet("/jobs", (JobQueue queue, string? status, int? limit) =>
@@ -265,33 +311,4 @@ public static class AdminEndpoints
     private static IResult SaveResponse(SaveResult result) =>
         result.Saved ? Results.Ok(result) : Results.Json(result, statusCode: StatusCodes.Status422UnprocessableEntity);
 
-    private static object AddonSummary(EffectiveSettings settings)
-    {
-        try
-        {
-            var status = AddonSelfHealService.CreateInstaller(settings).GetStatus();
-            return new
-            {
-                ok = status.Ok,
-                mode = status.State?.Mode,
-                bundledVersion = status.Bundled?.Version,
-                installedVersion = status.InstalledXpi?.Version,
-                thunderbirdRunning = status.ThunderbirdRunning,
-                installations = status.Installations.Select(i => new
-                {
-                    dir = i.Installation.InstallDir,
-                    version = i.Installation.Version,
-                    entry = i.Entry is not null,
-                    ok = i.Ok,
-                    tokenOk = i.TokenOk,
-                    urlOk = i.InstallUrlOk,
-                }),
-                error = status.BundledError,
-            };
-        }
-        catch (Exception ex)
-        {
-            return new { ok = false, error = ex.Message, installations = Array.Empty<object>() };
-        }
-    }
 }

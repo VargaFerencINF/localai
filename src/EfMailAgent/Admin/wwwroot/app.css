@@ -225,3 +225,19 @@ table.output-rules td { vertical-align: top; }
 table.output-rules td:nth-child(1) { width: 22%; }
 table.output-rules td:nth-child(2) { width: 26%; }
 table.output-rules td:last-child { width: 1%; }
+
+/* ---- settings: wizard, add-on ---- */
+.wizard-step { display: flex; gap: 14px; padding: 12px 0; border-top: 1px solid var(--border); }
+.wizard-step .step-num { flex: none; width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; font-weight: 700; background: var(--surface-2); border: 1px solid var(--border); }
+.wizard-step.done .step-num { background: var(--ok); border-color: var(--ok); color: #fff; }
+.wizard-step .step-body { flex: 1; min-width: 0; }
+.wizard-step h3 { margin: 4px 0 8px; }
+.ok-text { color: var(--ok); font-weight: 600; }
+.field.grow { flex: 1; margin: 0; }
+.task-box { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; margin: 8px 0; background: var(--info-soft); }
+.task-box.failed { background: var(--error-soft); color: var(--error); }
+progress { width: 100%; height: 12px; margin-top: 8px; accent-color: var(--primary); }
+table.model-table td { vertical-align: middle; }
+table.model-table td:first-child { width: 36px; }
+table.model-table .badge { margin-left: 6px; }
+.layout .sidebar #quit { margin-top: auto; }

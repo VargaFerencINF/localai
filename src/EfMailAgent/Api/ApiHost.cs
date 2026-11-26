@@ -44,10 +44,19 @@ public static class ApiHost
         builder.Services.AddEfMailAgentCore(settings);
         builder.Services.AddEfMailAgentWorker();
         builder.Services.AddSingleton<LlmHealthCache>();
+        builder.Services.AddSingleton(new Hosting.RuntimeInfo { IsWindowsService = Microsoft.Extensions.Hosting.WindowsServices.WindowsServiceHelpers.IsWindowsService() });
         builder.Services.AddSingleton<Admin.AdminSessions>();
         builder.Services.AddSingleton<Admin.LoginCodeRegistry>();
         builder.Services.AddSingleton<Admin.RuleFileService>();
         builder.Services.AddSingleton<Admin.SettingsService>();
+        builder.Services.AddSingleton(new Admin.OllamaSetupOptions());
+        builder.Services.AddSingleton<Admin.IOllamaPlatform>(_ => OperatingSystem.IsWindows() ? new Admin.WindowsOllamaPlatform() : new Admin.UnsupportedOllamaPlatform());
+        builder.Services.AddSingleton<Admin.OllamaSetupService>();
+        builder.Services.AddSingleton<Addon.IElevationCheck, Addon.SystemElevationCheck>();
+        builder.Services.AddSingleton<Admin.IElevatedRunner, Admin.WindowsElevatedRunner>();
+        builder.Services.AddSingleton(sp => new Admin.AddonSetupService(sp.GetRequiredService<Configuration.EffectiveSettings>(),
+            sp.GetRequiredService<Addon.IElevationCheck>(), sp.GetRequiredService<Admin.IElevatedRunner>(),
+            sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<Admin.AddonSetupService>>()));
         builder.Services.AddSingleton<Addon.AddonSelfHealService>();
         builder.Services.AddHostedService(sp => sp.GetRequiredService<Addon.AddonSelfHealService>());
         builder.Services.Configure<JsonOptions>(o =>

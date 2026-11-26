@@ -79,30 +79,51 @@ További paraméter: `/LLMPROVIDER=openai_compatible`. Felügyelet nélküli tel
 fiókkal fut; más fiókot utólag az `EfMailAgent.exe install-service --account ... --password ...` paranccsal lehet
 beállítani.
 
-### 2.3 A kezelőfelület megnyitása
+### 2.3 A program indítása: asztali alkalmazásként
 
-A program indításakor **mindig a kezelőfelület nyílik meg** a böngészőben, bejelentkezve (token beírása nélkül):
+Az EfMailAgent **asztali alkalmazásként** nyílik meg: saját ablakban (címsor és böngészőfülek nélkül, saját
+tálcaikonnal), bejelentkezve, token beírása nélkül.
 
-- **Start menü / asztal: EfMailAgent kezelőfelület** ikon. Ha a szolgáltatás fut, csak megnyitja a felületet;
-  ha nem fut, elindítja a programot is.
-- **Az `EfMailAgent.exe` dupla kattintással** (telepítő nélkül is): elindul egy konzolablak (ez maga a program, a
-  bezárásával leáll), és megnyílik a kezelőfelület. Ha a program már fut, a második indítás csak megnyitja a
-  felületet, nem indít még egy példányt.
-- Első indításkor, vagy ha az AI nem érhető el, a **Beállítások** oldal nyílik meg: itt add meg az AI kapcsolatot
-  és azt, hova kerüljenek a CSV fájlok (7.0 fejezet).
+- **Start menü / asztal: EfMailAgent kezelőfelület** ikon. Ha a program (vagy a szolgáltatás) már fut, csak
+  megnyitja az ablakot; ha nem fut, el is indítja.
+- **Az `EfMailAgent.exe` dupla kattintással** (telepítő nélkül is): a program elindul, és megnyílik az ablaka. Fekete
+  konzolablak nem marad nyitva; ha valami miatt nem tud elindulni, felugró ablak írja meg az okát.
+- Az ablak **bezárása után a program a háttérben tovább dolgozik** (a beérkező leveleket feldolgozza); az ikonnal
+  bármikor újra megnyitható. Teljes leállítás: a bal oldali sávban **Kilépés a programból**. (Ha a program Windows
+  szolgáltatásként fut, ez a gomb nem látszik: a szolgáltatás mindig fut.)
+- Első indításkor, vagy ha az AI nem érhető el, a **Beállítások** oldal nyílik meg (2.4 fejezet).
 
-A felület címe **http://127.0.0.1:47811/admin** (csak a szerveren érhető el). Ha kézzel nyitod meg, a tokennel lehet
-belépni: `"C:\Program Files\EfMailAgent\EfMailAgent.exe" print-token`.
+Az ablakhoz a gépen lévő **Microsoft Edge** kell (Windows 10/11-en és Windows Server 2022-n alapból megvan); ha nincs,
+Google Chrome, végső esetben az alapértelmezett böngésző nyílik meg. A felület címe **http://127.0.0.1:47811/admin**
+(csak ezen a gépen érhető el); kézzel megnyitva a tokennel lehet belépni:
+`"C:\Program Files\EfMailAgent\EfMailAgent.exe" print-token`.
 
-### 2.4 Az első ellenőrzés
+### 2.4 Első beállítás a Beállítások oldalon (varázsló)
 
-1. Nyisd meg a kezelőfelületet (Start menü: **EfMailAgent kezelőfelület**).
-2. Ha sárga sáv jelzi, hogy „Az AI (helyi LLM) nem érhető el”, kattints a **Beállítások megnyitása** gombra, és add
-   meg az AI szerver címét és a modellt (**Kapcsolat tesztelése**, majd **Mentés**).
-3. Az **Áttekintés** oldalon ellenőrizd: az AI elérhető (zöld), a szabályok betöltve.
-4. A Thunderbirdben a bővítmény beállításai (Kiegészítők > EfMailAgent > Beállítások): **Kapcsolat tesztelése**
-   gomb. Zöld „Kapcsolat rendben” üzenetet kell látnod.
-5. Küldj egy próbalevelet a postafiókba „Előrendelés teszt” tárggyal. Pár perc múlva meg kell jelennie a CSV-ben.
+**1. AI telepítése és modellválasztás (Ollama)** – a Beállítások oldal tetején:
+
+1. **Ollama (helyi AI szerver)**: a program megnézi, fut-e az Ollama. Ha nem, a **Ollama letöltése és telepítése**
+   gomb letölti a hivatalos telepítőt az ollama.com-ról, ellenőrzi a digitális aláírását, és elindítja (kb. 1 GB,
+   rendszergazdai jog nem kell). A folyamatjelző mutatja, hol tart; a végén megvárja, hogy az Ollama elinduljon.
+   - Ha az EfMailAgent Windows szolgáltatásként fut, a telepítőt nem tudja a te asztalodon elindítani: ilyenkor a
+     **Az Ollama letöltése (ollama.com)** linkről töltsd le és telepítsd, majd kattints az **Újraellenőrzés** gombra.
+   - Ha az Ollama másik gépen fut, írd be a címét (pl. `http://192.168.1.20:11434`), és **Újraellenőrzés**.
+2. **Modell letöltése és kiválasztása**: a lista mutatja az ajánlott modelleket (méret, szükséges memória), a gép
+   memóriája alapján egy **„ajánlott ehhez a géphez”** jelöléssel, és a már letöltött modelleket. Más modell neve is
+   beírható (az ollama.com/library oldalon található nevek). Válassz egyet, majd **… letöltése** (folyamatjelzővel;
+   egy 5 GB-os modell a hálózattól függően 5–30 perc), végül **Használat ezzel a modellel**: a program azonnal erre a
+   modellre áll át. A **Tesztkonzolban** ki is próbálhatod.
+
+**2. Thunderbird bővítmény** – a Beállítások oldalon lejjebb: az állapot (talált Thunderbird, telepített verzió) és a
+**Telepítés a Thunderbirdbe** gomb. Egy kattintással telepíti a bővítményt a gépen lévő Thunderbirdbe, a szerver
+címét és a tokent is beállítja. Ha a program nem rendszergazdaként fut, a Windows engedélyt kér (válaszd az Igen
+gombot). Utána **zárd be teljesen és indítsd újra a Thunderbirdöt**.
+
+**3. Kimenet** (7.0 fejezet): hova és milyen nevű CSV fájlokba kerüljenek a sorok.
+
+**Ellenőrzés:** az **Áttekintés** oldalon az AI zöld („elérhető”), a Thunderbird bővítmény „rendben”; a
+Thunderbirdben a bővítmény beállításainál a **Kapcsolat tesztelése** zöld. Küldj egy próbalevelet „Előrendelés
+teszt” tárggyal: pár perc múlva megjelenik a CSV-ben.
 
 ### 2.5 Szolgáltatásfiók és hálózati megosztás
 
@@ -333,6 +354,9 @@ ellenőrzendő 11, hiba 1), átlagos feldolgozási idő 38,2 mp, jelenleg a sorb
 | **Lassú feldolgozás** | Nincs GPU, túl nagy modell | `EfMailAgent.exe benchmark eloreendeles` megméri a levelenkénti időt. Kisebb modell vagy GPU segít. |
 | **Hibás szabály** | Elgépelés a `rule.yaml`-ban kézi szerkesztés után | Az admin Szabályok oldala piros jelzéssel mutatja a hibát; a többi szabály tovább működik. Parancssorban: `EfMailAgent.exe validate-rules`. |
 | **Dupla kattintás után a konzolablak hibát ír és Entert vár** | Az adatmappa nem írható, vagy a beállítások hibásak | Olvasd el a hiba okát az ablakban. Ha a szolgáltatás telepítve van, a kezelőfelületet a Start menü **EfMailAgent kezelőfelület** ikonjával nyisd meg. |
+| **A kezelőfelület böngészőfülben nyílik meg, nem külön ablakban** | Nincs Microsoft Edge / Chrome a gépen | Telepítsd a Microsoft Edge-et; addig a felület a böngészőben is teljes értékű. |
+| **Az Ollama telepítése / modell letöltése nem indul** | Nincs internetkapcsolat az ollama.com felé, vagy a program szolgáltatásként fut | Ellenőrizd a hálózatot / proxyt. Szolgáltatásnál töltsd le az Ollamát kézzel (link a varázslóban). Modellt a varázsló szolgáltatásként is le tud tölteni. |
+| **„Telepítés a Thunderbirdbe”: a Windows engedélykérést elutasították** | A felugró ablakban a Nem gombot választották | Kattints újra, és válaszd az Igen gombot (rendszergazdai jog kell a Thunderbird mappájához). |
 | **„Az indítási link lejárt”** a belépő oldalon | A bejelentkező link 2 percig és csak egyszer érvényes (pl. a böngésző fülét később frissítetted) | Nyisd meg újra a Start menü ikonnal, vagy lépj be a tokennel (`print-token`). |
 | **A szolgáltatás nem indul** | Foglalt port (47811) vagy hibás `appsettings.json` | Nézd meg a naplót: `C:\ProgramData\EfMailAgent\logs\`. Konzolos próba: `EfMailAgent.exe` (paraméter nélkül) kiírja a hibát. |
 
@@ -391,7 +415,7 @@ A `--help` minden parancsnál magyar leírást ad.
 |---|---|
 | `print-token` | Kiírja a tokent |
 | *(paraméter nélkül)* | Elindítja a programot és megnyitja a kezelőfelületet; ha már fut, csak a felületet nyitja meg (`--no-browser`: böngésző nélkül) |
-| `open-admin` | Megnyitja a kezelőfelületet, bejelentkezve |
+| `open-admin` | Megnyitja a kezelőfelületet (asztali ablakban), bejelentkezve |
 | `validate-rules` | Ellenőrzi a szabályokat |
 | `test-rule <szabaly> <fajl>` | Egy levelet lefuttat egy szabályon (CSV írás nélkül) |
 | `benchmark <szabaly>` | Megméri a feldolgozási időt a mintaleveleken |

@@ -332,6 +332,20 @@
 
 ---
 
+## Version 1.2.0 (2026-11-26)
+
+- Requested: the exe as a desktop app; the Thunderbird add-on installer and a guided Ollama installer with model
+  selection in the settings.
+- Desktop app window (Edge/Chrome app mode), no console on double click, error message box, "Kilépés a programból"
+  (D-1001, D-1002). Thunderbird add-on status and one-click install with UAC when needed (D-1003). Ollama wizard:
+  detect, download + signature check + install, model recommendation, download with progress, apply (D-1004).
+- Verification: `dotnet test` 323 passed, Node 85 passed, e2e simulation passed, UI test 49/49 (local; fake Ollama for
+  the wizard). Windows CI: the installed-service UI test must install the add-on into the registered Thunderbird with
+  the button and must not show "Kilépés". The real desktop window, the UAC prompt and a real Ollama install can only be
+  checked on the server (`docs/WINDOWS_ACCEPTANCE.md`).
+
+---
+
 ## Version 1.1.0 (2026-11-26)
 
 - Requested: the UI must always open on start, and the AI connection and the output files must be set there.

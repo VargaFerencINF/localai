@@ -1,5 +1,25 @@
 # EfMailAgent kiadási megjegyzések
 
+## 1.2.0 (2026-11-26)
+
+### Újdonságok
+
+- **Asztali alkalmazás**: az EfMailAgent saját ablakban nyílik meg (Microsoft Edge / Chrome alkalmazásmód, címsor
+  és fülek nélkül, saját tálcaikonnal), fekete konzolablak nélkül. Indítási hiba esetén felugró ablak írja meg az okát.
+  Az ablak bezárása után a program a háttérben tovább dolgozik; **Kilépés a programból** gomb a bal oldali sávban.
+- **AI telepítő varázsló (Ollama)** a Beállításokban: az Ollama felismerése, letöltése és telepítése egy gombbal
+  (aláírás-ellenőrzéssel), modellajánlás a gép memóriája alapján, modell letöltése folyamatjelzővel, majd a program
+  átállítása az új modellre.
+- **Thunderbird bővítmény telepítése egy gombbal** a Beállításokban, állapotkijelzéssel (rendszergazdai jóváhagyást kér,
+  ha kell).
+
+### Ellenőrizve a kiadás előtt
+
+- 323 C# és 85 add-on teszt, végponttól végpontig szimuláció.
+- Kezelőfelület használati teszt (49 lépés, böngészőben, hamis Ollamával a varázslóhoz): Linuxon és a telepített
+  Windows szolgáltatáson, ahol a Thunderbird bővítmény egy gombos telepítése egy regisztrált Thunderbirdbe is lefut.
+- Telepítő Windowson: telepítés, ikonok, frissítés, eltávolítás.
+
 ## 1.1.0 (2026-11-26)
 
 ### Újdonságok

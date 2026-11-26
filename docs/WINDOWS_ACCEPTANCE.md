@@ -174,3 +174,18 @@ Valódi Thunderbirddel, valódi helyi modellel, a v1.0.0 telepítővel.
       következő levél sorai a megadott helyre és névvel kerülnek.
 - [ ] Az Áttekintésen a sárga „Az AI (helyi LLM) nem érhető el” sáv látszik, amíg az Ollama nem fut, és eltűnik, ha fut.
 
+## 1.2.0: asztali alkalmazás, Ollama varázsló, Thunderbird gomb
+
+- [ ] Dupla kattintás az `EfMailAgent.exe`-re: nem marad nyitva konzolablak, a felület saját ablakban (Edge
+      alkalmazásmód, címsor nélkül, saját tálcaikonnal) nyílik meg, bejelentkezve.
+- [ ] Az ablak bezárása után a program tovább fut (a Start menü ikon újra megnyitja); a „Kilépés a programból” gomb
+      megerősítés után leállítja.
+- [ ] Ha a port foglalt (pl. másik program a 47811-en): felugró hibaablak magyar szöveggel.
+- [ ] Beállítások > AI telepítése: Ollama nélküli gépen az „Ollama letöltése és telepítése” gomb letölti, ellenőrzi és
+      telepíti az Ollamát (látszik a telepítő folyamatablaka), utána „Az Ollama fut”.
+- [ ] Modell kiválasztása (pl. az ajánlott), letöltés folyamatjelzővel, „Használat ezzel a modellel” → a Tesztkonzolban
+      a demó levél valódi AI-val feldolgozódik.
+- [ ] Szolgáltatásként futó programnál a varázsló a letöltési linket mutatja, a modell letöltése működik.
+- [ ] Beállítások > Thunderbird bővítmény: nem rendszergazdaként indított programnál a gomb Windows engedélykérést mutat;
+      Igen után „telepítve”, Nem után érthető üzenet; a Thunderbird újraindítása után a bővítmény működik.
+
