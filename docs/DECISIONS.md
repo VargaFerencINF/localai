@@ -314,7 +314,7 @@ not install; the version must be confirmed on site (docs/WINDOWS_ACCEPTANCE.md).
 
 | Purpose | API | Since | Permission |
 |---|---|---|---|
-| New mail | `messages.onNewMailReceived(folder, MessageList)`, default monitoring (inbox and normal folders); folder filter in the add-on | 78 (monitorAllFolders 128, not used) | accountsRead, messagesRead |
+| New mail | `messages.onNewMailReceived(folder, MessageList)`, default monitoring (inbox and normal folders); folder filter in the add-on | 78 (monitorAllFolders 128, used since D-801) | accountsRead, messagesRead |
 | Body | `messages.listInlineTextParts(id)` -> `[{contentType, content}]`; fallback `messages.getFull` tree walk | 128 | messagesRead |
 | HTML -> text | `messengerUtilities.convertToPlainText(html)` if available, else own converter | 140 | - |
 | Attachment names | `messages.listAttachments(id)` (`name`) | 91 | messagesRead |
@@ -574,5 +574,54 @@ the health endpoint and the admin page, then builds the same binaries as version
 modified rule and an existing CSV (both must survive, the token must not change), and finally uninstalls silently
 (service and program files gone, data kept). A real interactive run on a clean machine stays in the acceptance list.
 
-## Planned for later steps (decided now, implemented later)
+## Step 8
 
+### D-801 Review against the specification
+Gaps found and fixed in the final review:
+- The add-on registered `messages.onNewMailReceived` with the default monitoring, which skips special-use folders
+  (archives, sent, drafts, junk, trash, templates). An extra folder chosen in the options that has a special use (e.g.
+  an archive a filter moves orders into) would never fire the event. It now passes `monitorAllFolders = true`
+  (Thunderbird 128+, our minimum); the agent still drops events from folders that are not watched.
+- Hidden and control characters were passed to the model unchanged (see D-802).
+- CSV cells could start Excel formulas (see D-803).
+- No daily summary log line (see D-804), no way to measure the real model speed on the server (see D-805).
+Everything else in CLAUDE.md sections 5-10 was checked item by item and is implemented; the remaining deviations are
+the ones already recorded in D-1xx..D-7xx.
+
+### D-802 Prompt-injection hardening
+On top of the existing measures (email inside `<email>` delimiters with look-alike tags neutralised, the base system
+prompt says the email is data, schema enforced by the LLM server and validated by the exe, repair call limited to
+one), `TextSanitizer` now removes C0/C1 control characters (except line feed and tab), zero-width characters,
+bidirectional overrides and isolates, soft hyphen and BOM from the subject, sender, attachment names and body before
+the prompt is assembled. Line breaks are normalised to `\n`; subject and sender become single lines. The stored job
+keeps the original text (the sanitiser only shapes what the model sees). A model that obeys an injected instruction
+and answers in another format fails validation twice and ends as `failed` with no CSV rows (test
+`Prompt_injection_cannot_change_the_output_format`).
+
+### D-803 CSV formula protection (`Csv.EscapeFormulas`, default `true`)
+Email text ends up in CSV cells that operators open in Excel, so a cell starting with `=`, `+`, `-`, `@`, tab or CR is
+prefixed with `'` (OWASP CSV injection guidance). It applies to `string` columns and to the text meta columns
+(`kuldo`, `eredeti_kuldo`, `targy`, `message_id`); numbers, dates, booleans and enums are never changed, so negative
+numbers stay numbers. The ERP import sees the `'` in the rare affected cells; set `EscapeFormulas` to `false` if the
+import cannot handle it. The demo expected CSV is unchanged (none of its cells is affected).
+
+### D-804 Daily summary
+`DailySummaryService` writes one Information line a minute after local midnight (time zone `App.TimeZone`) about the
+previous day: processed / done / needs_review / failed counts by `finished_at`, average processing time and current
+queue length. It is a log line only; the admin UI already has the "Ellenőrzendők megnyitása" filter link.
+
+### D-805 Performance measurement
+No real model exists in the sandbox, so a `benchmark <rule> [--dir] [--repeat]` command was added: it runs the sample
+emails through the configured LLM without touching the queue or the CSV and prints per-email and average times. The
+sandbox number (mock provider with 1.5 s simulated latency) only proves the overhead is negligible; the real number
+is measured on the server (`docs/WINDOWS_ACCEPTANCE.md`, step 8).
+
+### D-806 Robustness scenarios
+Covered by automated tests: restart mid-job, LLM down for 30 minutes (queue pauses, attempts stay 0, job then
+succeeds), 200 queued emails (strict FIFO, one at a time, 1000 rows in one file), very long email (truncated prompt,
+complete stored body), HTML-only body, CSV locked by Excel (retry, then `_pending_` file), broken rule (reported with a
+Hungarian message, the other rules keep working), Thunderbird closed for a day (backfill), prompt injection. Real-server repetitions
+are in the acceptance checklist.
+
+### D-807 Version 1.0.0
+`VERSION` and the add-on manifest are set to 1.0.0 and the commit is tagged `v1.0.0`.

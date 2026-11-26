@@ -37,6 +37,14 @@ public static partial class PromptBuilder
 
     public static AssembledPrompt Build(Rule rule, string baseSystemPrompt, PromptInput input, DateTimeOffset now, TimeZoneInfo timeZone)
     {
+        // Hidden characters and control codes never reach the model (prompt-injection hardening).
+        input = input with
+        {
+            Sender = input.Sender is null ? null : TextSanitizer.CleanLine(input.Sender),
+            Subject = input.Subject is null ? null : TextSanitizer.CleanLine(input.Subject),
+            BodyText = TextSanitizer.Clean(input.BodyText),
+            AttachmentNames = input.AttachmentNames.Select(TextSanitizer.CleanLine).ToArray(),
+        };
         var originalSender = OriginalSenderDetector.Detect(input.BodyText, input.Sender);
         var today = TimeZoneInfo.ConvertTime(now, timeZone).ToString(DateFormat, CultureInfo.InvariantCulture);
         var receivedAt = input.ReceivedAt is { } r

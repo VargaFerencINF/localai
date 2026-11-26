@@ -9,7 +9,7 @@
 | 5 | Add-on installation from the exe | **done** |
 | 6 | Admin UI | **done** |
 | 7 | Windows Service and installer | **done** |
-| 8 | End-to-end test, hardening, user guide | next |
+| 8 | End-to-end test, hardening, user guide | **done** (v1.0.0) |
 
 ---
 
@@ -284,3 +284,71 @@
 ### Notes for the next step
 - Decisions D-701..D-706. Step 8: user guide (installer screens, unattended parameters, service account and network
   share notes), hardening and the final review.
+
+---
+
+## Step 8: End-to-end test, hardening, user guide (done, 2026-11-26)
+
+### What exists
+- Review against CLAUDE.md, gaps fixed (D-801): add-on new-mail listener with `monitorAllFolders`, prompt sanitiser,
+  CSV formula protection, daily summary, benchmark command.
+- `Processing/TextSanitizer.cs`: control, zero-width and bidi characters removed before the prompt (D-802).
+- `Csv.EscapeFormulas` (default `true`): text cells starting with `= + - @` get a `'` prefix (D-803).
+- `Processing/DailySummaryService.cs`: one Hungarian summary log line after local midnight (D-804).
+- `EfMailAgent.exe benchmark <rule> [--dir] [--repeat]`: per-email and average LLM time on the sample emails (D-805).
+- `src/EfMailAgent.Tests/Robustness/RobustnessTests.cs`: 30-minute LLM outage, 200 queued emails, very long email,
+  prompt injection, sanitiser, formula protection, daily summary. Other scenarios were already covered (D-806).
+- `docs/USER_GUIDE_HU.md`: Hungarian operator manual (what it does, installation, forwarding and subject keywords,
+  new email type worked example, Tesztkonzol tuning, partner list as skill, CSV columns and statuses,
+  troubleshooting table, operations, backup and upgrade, CLI summary). The installer installs it when present.
+- `README.md`: developer overview (architecture, build, test, run, release).
+- Version 1.0.0 (`VERSION`, add-on manifest), tag `v1.0.0`.
+
+### Verification
+- `dotnet test`: **292 passed**; Node tests **85 passed**; `scripts/e2e-sim.sh` passed (sandbox).
+- Windows build, installer and service: Windows CI job; real-server checks in `docs/WINDOWS_ACCEPTANCE.md` (step 8).
+
+### Performance note
+- Sandbox (mock provider, 1.5 s simulated latency), `benchmark eloreendeles` on the 8 sample emails:
+  average **1.5 s/email**, slowest 1.7 s, total 12.2 s. The pipeline overhead (prompt, validation, CSV) is in the
+  milliseconds; the real time is the model's.
+- Real model: to be measured on the server with `EfMailAgent.exe benchmark eloreendeles` (acceptance list). Rough
+  expectation for a 7-9B model on a mid-range GPU: 10-40 s per email; CPU only: minutes per email. With strictly
+  sequential processing this sets the daily capacity (e.g. 30 s/email is about 120 emails/hour).
+
+---
+
+## Final checklist (v1.0.0)
+
+### Done
+- [x] Rules as YAML + Markdown, hot reload, validation with Hungarian messages, schema generated from columns.
+- [x] Subject normalisation identical in C# and JS (shared vectors), priority and tie-break.
+- [x] Persistent SQLite queue, one worker, FIFO, restart recovery, outage pause, retry with backoff, one repair call.
+- [x] Ollama, OpenAI-compatible and mock LLM clients; JSON Schema constrained output; exe writes the CSV.
+- [x] CSV: UTF-8 BOM, `;`, CRLF, RFC 4180, decimal separator, meta columns, row status, lock retry and pending file,
+      formula protection.
+- [x] HTTP API on 127.0.0.1 with token; admin UI (overview, rules, test console, settings, log) with session + CSRF.
+- [x] Thunderbird add-on: new mail, matchers refresh, submit, tags, polling, backfill, outbox, context menu,
+      managed storage config, options page with connection test, Hungarian UI.
+- [x] Add-on installation via `policies.json` merge (backup, uninstall, self-heal) and profile fallback.
+- [x] Windows Service, CLI, Inno Setup installer (install, upgrade, uninstall), `build.ps1`, CI on Linux and Windows.
+- [x] Prompt-injection hardening, daily summary, benchmark, robustness tests.
+- [x] Hungarian user guide, English README.
+
+### Known limitations
+- Thunderbird must run in a logged-in session; gaps are covered only by the backfill (default 3 days).
+- Verified only in the sandbox and on GitHub's Windows runner: real Thunderbird, a real local model, the interactive
+  installer and network shares must be checked on the server (`docs/WINDOWS_ACCEPTANCE.md`).
+- Extraction quality depends on the model; prompts need tuning with real emails in the Tesztkonzol.
+- Re-running a job appends its rows again; old rows must be removed from the CSV by hand.
+- Large skill lists (thousands of partners) are put into the prompt as text and may not fit the model's context.
+- The XPI and the exe are unsigned unless `build.ps1 -Sign` is used (SmartScreen / antivirus may warn).
+- Attachments are listed by name only; their content is not read.
+
+### Ideas for v2
+- Attachment parsing (xlsx, pdf, docx) feeding the same rule pipeline (`attachmentNames` already flows through).
+- Master data lookup against ERP exports (partner and item codes matched in code after extraction instead of
+  putting the whole list into the prompt).
+- Multiple mailboxes / accounts with per-account rules, and multiple servers.
+- Direct ERP import instead of CSV files, and a review screen to correct `ellenorzendo` rows before export.
+- Optional replacement of rows on re-run (per-job output with a merge step).

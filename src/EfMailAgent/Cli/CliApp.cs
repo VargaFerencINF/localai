@@ -77,6 +77,7 @@ public static class CliApp
 
         AddonCommands.Add(root, dataDirOption, output, error);
         ServiceCommands.Add(root, dataDirOption, output, error);
+        BenchmarkCommand.Add(root, dataDirOption, output, error);
 
         // No subcommand: run the worker and the HTTP API (console mode now, Windows Service in Step 7).
         root.SetAction(async (parse, cancellationToken) =>

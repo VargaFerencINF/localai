@@ -4,7 +4,8 @@
 export function wireAgent(messenger, agent) {
   messenger.runtime.onStartup.addListener(() => agent.onStartup());
   messenger.runtime.onInstalled.addListener(() => agent.onStartup());
-  messenger.messages.onNewMailReceived.addListener((folder, messages) => agent.onNewMail(folder, messages));
+  // monitorAllFolders (TB 128+): also special-use folders the user chose to watch; the agent filters by folder.
+  messenger.messages.onNewMailReceived.addListener((folder, messages) => agent.onNewMail(folder, messages), true);
   messenger.alarms.onAlarm.addListener((alarm) => agent.onAlarm(alarm));
   messenger.menus.onClicked.addListener((info) => agent.onMenuClicked(info));
   messenger.runtime.onMessage.addListener((message) => agent.onRuntimeMessage(message));

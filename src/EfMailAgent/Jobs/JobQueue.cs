@@ -86,6 +86,25 @@ public sealed class JobQueue(JobDatabase database, TimeProvider? timeProvider = 
         return result;
     }
 
+    public sealed record FinishedStats(int Done, int NeedsReview, int Failed, double? AverageDurationMs);
+
+    /// <summary>Jobs finished in [from, to): counts by final status and the average processing time.</summary>
+    public FinishedStats FinishedBetween(DateTimeOffset from, DateTimeOffset to)
+    {
+        using var connection = database.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT SUM(status = 'done'), SUM(status = 'needs_review'), SUM(status = 'failed'), AVG(duration_ms)
+            FROM jobs WHERE finished_at >= $from AND finished_at < $to AND status IN ('done', 'needs_review', 'failed')
+            """;
+        command.Parameters.AddWithValue("$from", from.UtcDateTime.ToString("O", CultureInfo.InvariantCulture));
+        command.Parameters.AddWithValue("$to", to.UtcDateTime.ToString("O", CultureInfo.InvariantCulture));
+        using var reader = command.ExecuteReader();
+        reader.Read();
+        int Int(int i) => reader.IsDBNull(i) ? 0 : Convert.ToInt32(reader.GetValue(i));
+        return new FinishedStats(Int(0), Int(1), Int(2), reader.IsDBNull(3) ? null : reader.GetDouble(3));
+    }
+
     /// <summary>Jobs waiting or running.</summary>
     public int QueueLength()
     {

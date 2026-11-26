@@ -7,7 +7,7 @@ using EfMailAgent.Rules;
 namespace EfMailAgent.Output;
 
 /// <summary>Cell formatting and RFC 4180 quoting.</summary>
-public sealed class CsvFormatter(char delimiter, string decimalSeparator)
+public sealed class CsvFormatter(char delimiter, string decimalSeparator, bool escapeFormulas = false)
 {
     public char Delimiter { get; } = delimiter;
 
@@ -20,6 +20,10 @@ public sealed class CsvFormatter(char delimiter, string decimalSeparator)
             return value;
         return "\"" + value.Replace("\"", "\"\"") + "\"";
     }
+
+    /// <summary>OWASP CSV injection guard for text cells.</summary>
+    public string ProtectText(string value) =>
+        escapeFormulas && value.Length > 0 && value[0] is '=' or '+' or '-' or '@' or '\t' or '\r' ? "'" + value : value;
 
     public string FormatValue(JsonNode? node, ColumnType type)
     {
@@ -38,6 +42,8 @@ public sealed class CsvFormatter(char delimiter, string decimalSeparator)
                 return FormatNumber(element);
             case ColumnType.Boolean:
                 return value.TryGetValue<bool>(out var b) ? (b ? "igen" : "nem") : value.ToString();
+            case ColumnType.String:
+                return ProtectText(value.TryGetValue<string>(out var text) ? text : value.ToJsonString());
             default:
                 return value.TryGetValue<string>(out var s) ? s : value.ToJsonString();
         }

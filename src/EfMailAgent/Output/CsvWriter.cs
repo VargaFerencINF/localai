@@ -68,7 +68,7 @@ public sealed class CsvWriter
 
         // One consistent snapshot of the (live editable) settings per write.
         _outputDir = _outputDirProvider();
-        _formatter = new CsvFormatter(_settings.Delimiter[0], _settings.DecimalSeparator);
+        _formatter = new CsvFormatter(_settings.Delimiter[0], _settings.DecimalSeparator, _settings.EscapeFormulas);
         _lockRetry = _lockRetryOverride ?? TimeSpan.FromSeconds(_settings.LockRetrySeconds);
         _lockRetryInterval = _lockRetryIntervalOverride ?? TimeSpan.FromSeconds(_settings.LockRetryIntervalSeconds);
         Directory.CreateDirectory(_outputDir);
@@ -127,10 +127,10 @@ public sealed class CsvWriter
         yield return job.Id;
         yield return FormatLocal(processedAt);
         yield return job.ReceivedAt is { } received ? FormatLocal(received) : "";
-        yield return job.Sender ?? "";
-        yield return originalSender ?? "";
-        yield return job.Subject ?? "";
-        yield return job.MessageId;
+        yield return _formatter.ProtectText(job.Sender ?? "");
+        yield return _formatter.ProtectText(originalSender ?? "");
+        yield return _formatter.ProtectText(job.Subject ?? "");
+        yield return _formatter.ProtectText(job.MessageId);
         yield return row.Status;
         foreach (var column in output.Columns)
             yield return _formatter.FormatValue(row.Values[column.Name], column.Type);

@@ -75,6 +75,12 @@ public sealed class CsvSettings
     public int LockRetrySeconds { get; set; } = 600;
 
     public int LockRetryIntervalSeconds { get; set; } = 5;
+
+    /// <summary>
+    /// Text cells starting with = + - @ (or tab / CR) get a leading apostrophe so Excel never runs them as formulas
+    /// (CSV injection: subjects and extracted texts come from outside). Number columns are not affected.
+    /// </summary>
+    public bool EscapeFormulas { get; set; } = true;
 }
 
 public sealed class AppGeneralSettings

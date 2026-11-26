@@ -262,3 +262,9 @@ test('options page requests are answered by the background', async () => {
   assert.equal(status.outbox, 0);
   assert.equal(status.matchers.rulesVersion, 'v1');
 });
+
+test('new mail listener monitors all folders, so filtered mail moved out of the inbox is still seen', async () => {
+  const { fake } = await setup();
+  const [registration] = fake.callsOf('messages.onNewMailReceived.addListener');
+  assert.deepEqual(registration.args, [true]);
+});

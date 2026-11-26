@@ -50,5 +50,7 @@ public static class ServiceRegistration
 
     /// <summary>Adds the worker as a hosted service (service / console host).</summary>
     public static IServiceCollection AddEfMailAgentWorker(this IServiceCollection services) =>
-        services.AddHostedService(sp => sp.GetRequiredService<JobWorker>());
+        services.AddHostedService(sp => sp.GetRequiredService<JobWorker>())
+            .AddSingleton<DailySummaryService>()
+            .AddHostedService(sp => sp.GetRequiredService<DailySummaryService>());
 }
