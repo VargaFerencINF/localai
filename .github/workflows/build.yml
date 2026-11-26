@@ -273,8 +273,11 @@ jobs:
           # Shortcuts to the admin UI (Start menu always, desktop by default)
           foreach ($lnk in "$env:ProgramData\Microsoft\Windows\Start Menu\Programs\EfMailAgent kezelőfelület.lnk", "$env:PUBLIC\Desktop\EfMailAgent kezelőfelület.lnk") {
             if (-not (Test-Path -LiteralPath $lnk)) { throw "missing shortcut: $lnk" }
-            $target = (New-Object -ComObject WScript.Shell).CreateShortcut($lnk).TargetPath
-            if ($target -ne "$app\EfMailAgent.exe") { throw "shortcut $lnk points to $target" }
+            # The target path is stored in the .lnk (ANSI and/or UTF-16); WScript.Shell returns an empty object for this name.
+            $bytes = [IO.File]::ReadAllBytes($lnk)
+            $text = [Text.Encoding]::Unicode.GetString($bytes) + [Text.Encoding]::ASCII.GetString($bytes)
+            if ($text -notmatch [regex]::Escape('EfMailAgent\EfMailAgent.exe')) { throw "shortcut $lnk does not point to $app\EfMailAgent.exe" }
+            Write-Host "shortcut OK: $lnk" 
           }
 
           # open-admin (also used by the installer's last page) works read-only and prints the admin URL
