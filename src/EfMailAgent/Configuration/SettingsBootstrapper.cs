@@ -143,6 +143,9 @@ public static class SettingsBootstrapper
         return true;
     }
 
+    /// <summary>Shown as the source when the sample rules came from the exe itself.</summary>
+    public const string EmbeddedSamplesLabel = "a programba beépített minták";
+
     private static string? CopySampleRulesIfEmpty(string rulesDir, string? samplesRoot)
     {
         if (Directory.EnumerateFileSystemEntries(rulesDir).Any())
@@ -150,7 +153,10 @@ public static class SettingsBootstrapper
 
         var source = samplesRoot is not null ? Path.Combine(samplesRoot, "rules") : SampleLocator.FindSamplesSubfolder("rules");
         if (source is null || !Directory.Exists(source))
-            return null;
+        {
+            // EfMailAgent.exe run on its own (no installer, no samples folder): use the samples compiled into the exe.
+            return EmbeddedSamples.ExtractTo("rules", rulesDir) > 0 ? EmbeddedSamplesLabel : null;
+        }
 
         CopyDirectory(source, rulesDir);
         return Path.GetFullPath(source);

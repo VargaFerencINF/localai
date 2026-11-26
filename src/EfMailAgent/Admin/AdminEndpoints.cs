@@ -18,6 +18,8 @@ namespace EfMailAgent.Admin;
 public sealed record LoginRequest(string? Token);
 public sealed record FileSaveRequest(string? Content);
 public sealed record EnabledRequest(bool Enabled);
+
+public sealed record OutputRequest(string? Mode, string? File);
 public sealed record SkillRequest(string? FileName, string? Content);
 public sealed record CreateRuleRequest(string? Id, string? Name, string? CopyFrom);
 public sealed record TestRequest(string? RuleId, string? Subject, string? From, string? Body, DateTimeOffset? ReceivedAt);
@@ -32,6 +34,21 @@ public static class AdminEndpoints
     public static IEndpointRouteBuilder MapEfMailAgentAdmin(this IEndpointRouteBuilder app)
     {
         app.MapAdminStaticAssets();
+
+        // One-time login link (opened by the exe on start and by open-admin): sets the session cookie, then the UI.
+        app.MapGet("/admin/login", (HttpContext http, string? code, string? page, AdminSessions sessions, LoginCodeRegistry codes,
+            AppSettings settings, ILoggerFactory loggers) =>
+        {
+            var log = loggers.CreateLogger("EfMailAgent.Admin");
+            if (!codes.TryConsume(settings.Server.Token, code))
+            {
+                log.LogWarning("Lejárt vagy már felhasznált bejelentkező link.");
+                return Results.Redirect("/admin/?link=lejart");
+            }
+            log.LogInformation("Admin bejelentkezés (indítási link).");
+            http.Response.Cookies.Append(AdminSessions.CookieName, sessions.Issue(), AdminSessions.CookieOptions());
+            return Results.Redirect($"/admin/#/{(page is not null && LoginLink.Pages.Contains(page) ? page : "attekintes")}");
+        }).ExcludeFromDescription();
         var api = app.MapGroup("/admin/api").ExcludeFromDescription().AddEndpointFilter(async (context, next) =>
         {
             try
@@ -155,6 +172,9 @@ public static class AdminEndpoints
 
         api.MapPost("/rules/{folder}/enabled", (string folder, EnabledRequest request, RuleFileService files) =>
             SaveResponse(files.SetEnabled(folder, request.Enabled)));
+
+        api.MapPost("/rules/{folder}/output", (string folder, OutputRequest request, RuleFileService files) =>
+            SaveResponse(files.SetOutput(folder, request.Mode ?? "", request.File ?? "")));
 
         api.MapPost("/rules/{folder}/skills", (string folder, SkillRequest request, RuleFileService files) =>
             SaveResponse(files.AddSkill(folder, request.FileName?.Trim() ?? "", request.Content ?? "")));

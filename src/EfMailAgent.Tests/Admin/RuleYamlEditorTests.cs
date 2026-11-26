@@ -50,4 +50,31 @@ public class RuleYamlEditorTests
         Assert.StartsWith("id: x\nname: X\nenabled: false\n", inserted);
         Assert.Contains("file: \"y_{yyyy}.csv\"", RuleYamlEditor.ReplaceInOutputFile(Yaml, "x", "y").Replace("x_", "x_"));
     }
+
+    [Fact]
+    public void SetOutputScalar_changes_mode_and_file_under_output_only()
+    {
+        var yaml = File.ReadAllText(Path.Combine(TestPaths.SampleRules, "eloreendeles", "rule.yaml"));
+
+        var changed = RuleYamlEditor.SetOutputScalar(yaml, "mode", "per_job");
+        changed = RuleYamlEditor.SetOutputScalar(changed, "file", RuleYamlEditor.QuoteAlways("rendeles_{jobId}.csv"));
+
+        Assert.Contains("  mode: per_job  # append = one growing file, per_job = one file per email", changed);
+        Assert.Contains("  file: \"rendeles_{jobId}.csv\"", changed);
+        Assert.DoesNotContain("eloreendeles_{yyyy}-{MM}.csv", changed);
+        var before = yaml.Split('\n');
+        var after = changed.Split('\n');
+        Assert.Equal(before.Length, after.Length);
+        Assert.Equal(2, before.Zip(after).Count(p => p.First != p.Second)); // only the two lines changed
+    }
+
+    [Fact]
+    public void SetOutputScalar_inserts_a_missing_key_with_the_block_indentation()
+    {
+        var changed = RuleYamlEditor.SetOutputScalar(Yaml, "mode", "append");
+
+        Assert.Contains("output:\n  mode: append\n  file: \"x_{yyyy}.csv\"", changed.Replace("\r\n", "\n"));
+        Assert.Throws<FormatException>(() => RuleYamlEditor.SetOutputScalar("id: x\n", "mode", "append"));
+    }
 }
+

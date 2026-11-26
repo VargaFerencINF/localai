@@ -24,7 +24,7 @@ node -e '
   require("fs").writeFileSync(dataDir + "/appsettings.json", JSON.stringify(settings, null, 2));
 ' "$DATA" "$PORT" "$ROOT/samples/mock-responses"
 
-dotnet "$DLL" --data-dir "$DATA" > "$DATA/efmailagent-console.log" 2>&1 &
+dotnet "$DLL" --data-dir "$DATA" --no-browser > "$DATA/efmailagent-console.log" 2>&1 &
 PID=$!
 cleanup() {
   kill "$PID" 2>/dev/null || true

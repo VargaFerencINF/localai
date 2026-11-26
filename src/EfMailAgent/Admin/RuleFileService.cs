@@ -19,7 +19,9 @@ public sealed record RuleSummary(
     IReadOnlyList<RuleFileInfo> Files,
     IReadOnlyList<string> Errors,
     IReadOnlyList<string> Warnings,
-    bool IsBase);
+    bool IsBase,
+    string? OutputMode = null,
+    string? OutputFile = null);
 
 public sealed record SaveResult(bool Saved, IReadOnlyList<string> Errors, IReadOnlyList<string> Warnings, string? Path = null);
 
@@ -55,7 +57,9 @@ public sealed partial class RuleFileService(RuleRepository repository, Effective
             result.Add(new RuleSummary(folder, rule?.Id, rule?.Name, rule is not null, rule?.Enabled ?? false, rule?.Priority,
                 rule?.SubjectContains ?? [], rule?.SubjectRegex, FilesOf(folder),
                 issues.Where(i => !i.IsWarning).Select(i => i.Message).ToArray(),
-                issues.Where(i => i.IsWarning).Select(i => i.Message).ToArray(), IsBase: false));
+                issues.Where(i => i.IsWarning).Select(i => i.Message).ToArray(), IsBase: false,
+                OutputMode: rule is null ? null : rule.Output.Mode == Rules.OutputMode.PerJob ? "per_job" : "append",
+                OutputFile: rule?.Output.FilePattern));
         }
         return result;
     }
@@ -93,6 +97,23 @@ public sealed partial class RuleFileService(RuleRepository repository, Effective
         {
             var yamlPath = Resolve(folder, RuleLoader.RuleFileName, mustExist: true);
             var yaml = RuleYamlEditor.SetTopLevel(File.ReadAllText(yamlPath), "enabled", enabled ? "true" : "false");
+            return SaveYamlChecked(folder, yamlPath, yaml);
+        }
+    }
+
+    /// <summary>Sets output.mode and output.file of a rule (Beállítások page); validated like any rule save.</summary>
+    public SaveResult SetOutput(string folder, string mode, string file)
+    {
+        lock (_lock)
+        {
+            if (mode is not ("append" or "per_job"))
+                return Fail("A mód csak 'append' (egy gyűjtő fájl) vagy 'per_job' (levelenként külön fájl) lehet.");
+            if (string.IsNullOrWhiteSpace(file))
+                return Fail("Add meg a CSV fájl nevét.");
+            var yamlPath = Resolve(folder, RuleLoader.RuleFileName, mustExist: true);
+            var yaml = File.ReadAllText(yamlPath);
+            yaml = RuleYamlEditor.SetOutputScalar(yaml, "mode", mode);
+            yaml = RuleYamlEditor.SetOutputScalar(yaml, "file", RuleYamlEditor.QuoteAlways(file.Trim()));
             return SaveYamlChecked(folder, yamlPath, yaml);
         }
     }

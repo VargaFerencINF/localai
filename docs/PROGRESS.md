@@ -332,6 +332,20 @@
 
 ---
 
+## Version 1.1.0 (2026-11-26)
+
+- Requested: the UI must always open on start, and the AI connection and the output files must be set there.
+- Start opens the UI logged in (one-time link), first start / no AI opens Beállítások; a second start only opens the
+  UI (D-901, D-902). Start menu and desktop icon (D-905).
+- Beállítások > Kimenet: output folder and per-rule CSV file name and mode with preview; overview banner when the AI is
+  not set up (D-904).
+- Fixed: standalone exe had no sample rules (reported from the server: "0 érvényes, hiányzik _base/system.md"),
+  now embedded (D-903); second instance could start a worker next to the running one (D-902).
+- Verification: `dotnet test` 305 passed, Node 85 passed, e2e simulation passed, UI test 43/43 (local); Windows CI adds
+  a standalone-exe-in-an-empty-folder check, shortcut checks and `open-admin`.
+
+---
+
 ## Final checklist (v1.0.0)
 
 ### Done

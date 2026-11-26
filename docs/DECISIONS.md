@@ -656,3 +656,40 @@ push to the default branch, after the Linux and Windows jobs are green, if `v<VE
 the tag and the GitHub Release with the setup, the exe, the XPI, `SHA256SUMS.txt` and the notes from
 `docs/RELEASE_NOTES.md`.
 
+## Version 1.1.0
+
+### D-901 The admin UI always opens on start
+User request: starting the program must always open the UI, where the AI connection and the output locations are
+set. Started by a person (not as a Windows service, input not redirected, no `--no-browser`, no
+`EFMAILAGENT_NO_BROWSER`), the exe opens the default browser with a one-time login link
+(`/admin/login?code=issuedAt.nonce.hmac`, HMAC-SHA256 keyed by the API token, valid 2 minutes, single use, kept in
+memory). Anyone able to create a link can read the token anyway (same machine, same data folder), so it does not
+widen access. First start or an unreachable AI opens the Beállítások page, otherwise the overview. A refused link
+redirects to the login page with a Hungarian explanation. The link never appears in logs (removed from error
+messages). `open-admin` uses the same link.
+
+### D-902 Second start = open the UI, start nothing
+Before anything is built, the run command checks whether an EfMailAgent with the same token answers on the port; if
+so, a person's start only opens the UI and exits 0 (read-only: no log file, no settings written, so a normal user can
+use the Start menu icon while the SYSTEM service owns the files), a scripted start exits with code 5. A port taken by
+another program is also detected before the host starts. Previously the worker of the second instance started before
+Kestrel reported the port conflict and could recover or take a job of the running instance's queue.
+
+### D-903 Sample rules built into the exe
+A standalone EfMailAgent.exe (no installer) found no `samples` folder and started with an empty rules folder.
+`samples/rules/**` and `samples/emails/**` are now embedded resources; they are used when no samples folder is found
+(rules: copied into an empty rules folder; emails: extracted once per version into the temp folder for the
+Tesztkonzol and `benchmark`). A test checks that the embedded copies are byte-identical to the folder.
+
+### D-904 Output settings in the UI
+Beállítások gets a "Kimenet" section: the output folder (validated as writable on save) and, per rule, `output.mode`
+and `output.file` with a live preview of today's file name. They are written into rule.yaml by a line-based editor
+that keeps comments and the columns list, and saved through the normal rule validation (folder in the name, unknown
+placeholders and bad modes are refused with the loader's Hungarian messages). The overview shows a banner with a
+link to the settings when the AI is unreachable or no model is chosen.
+
+### D-905 Shortcuts
+The installer creates "EfMailAgent kezelőfelület" in the Start menu (always) and on the public desktop (task, on by
+default), both pointing at `EfMailAgent.exe` without arguments (start or open, D-902). A failed double-click start
+keeps the console open until Enter so the reason can be read.
+

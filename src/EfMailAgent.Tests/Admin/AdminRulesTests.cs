@@ -158,4 +158,34 @@ public class AdminRulesTests : IAsyncLifetime
         Assert.True(set.FindById("eloreendeles")!.Enabled);
         Assert.Empty(set.InvalidFolders);
     }
+
+    [Fact]
+    public async Task Output_file_and_mode_can_be_set_per_rule_and_invalid_names_are_refused()
+    {
+        var rule = (await _admin.GetJsonAsync("/admin/api/rules")).AsArray().Single(r => r!["folder"]!.GetValue<string>() == "eloreendeles")!;
+        Assert.Equal("append", rule["outputMode"]!.GetValue<string>());
+        Assert.Equal("eloreendeles_{yyyy}-{MM}.csv", rule["outputFile"]!.GetValue<string>());
+
+        var (status, _) = await _admin.JsonAsync(HttpMethod.Post, "/admin/api/rules/eloreendeles/output", new { mode = "per_job", file = "rendeles_{yyyy}{MM}{dd}_{jobId}.csv" });
+        Assert.Equal(200, status);
+        rule = (await _admin.GetJsonAsync("/admin/api/rules")).AsArray().Single(r => r!["folder"]!.GetValue<string>() == "eloreendeles")!;
+        Assert.Equal("per_job", rule["outputMode"]!.GetValue<string>());
+        Assert.Equal("rendeles_{yyyy}{MM}{dd}_{jobId}.csv", rule["outputFile"]!.GetValue<string>());
+        Assert.Contains("columns:", File.ReadAllText(Path.Combine(RuleDir, "rule.yaml")));
+
+        foreach (var (mode, file, expected) in new[]
+        {
+            ("append", "..\\..\\x.csv", "nem tartalmazhat mappát"),
+            ("append", "a_{valami}.csv", "Ismeretlen helyettesítő"),
+            ("append", " ", "Add meg a CSV fájl nevét"),
+            ("hetente", "a.csv", "append"),
+        })
+        {
+            var (code, body) = await _admin.JsonAsync(HttpMethod.Post, "/admin/api/rules/eloreendeles/output", new { mode, file });
+            Assert.True(code >= 400, $"{file}: {code}");
+            Assert.Contains(expected, body!.ToJsonString(new System.Text.Json.JsonSerializerOptions { Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping }));
+        }
+        Assert.Contains("rendeles_{yyyy}{MM}{dd}_{jobId}.csv", File.ReadAllText(Path.Combine(RuleDir, "rule.yaml"))); // unchanged by the refused saves
+    }
 }
+

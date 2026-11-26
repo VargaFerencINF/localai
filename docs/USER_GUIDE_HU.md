@@ -66,7 +66,8 @@ Egy levél útja:
      beállításokat megtartva, az eredetiről biztonsági másolatot készít).
 4. **Indítsd újra a Thunderbirdöt.** A bővítmény ezután megjelenik az Eszközök > Kiegészítők listában, és nem lehet
    kikapcsolni (a szabályzat telepítette).
-5. A telepítő végén megnyitható az admin felület.
+5. A telepítő végén megnyílik a kezelőfelület (bejelentkezve). A Start menüben és az asztalon létrejön az
+   **EfMailAgent kezelőfelület** ikon: ezzel bármikor újra megnyitható.
 
 Felügyelet nélküli telepítés (pl. távoli telepítéshez):
 
@@ -78,19 +79,32 @@ További paraméter: `/LLMPROVIDER=openai_compatible`. Felügyelet nélküli tel
 fiókkal fut; más fiókot utólag az `EfMailAgent.exe install-service --account ... --password ...` paranccsal lehet
 beállítani.
 
-### 2.3 Az első ellenőrzés
+### 2.3 A kezelőfelület megnyitása
 
-1. Nyisd meg az admin felületet: **http://127.0.0.1:47811/admin** (csak a szerveren érhető el).
-2. Bejelentkezéshez kell a token. Parancssorban:
-   ```
-   "C:\Program Files\EfMailAgent\EfMailAgent.exe" print-token
-   ```
-3. Az **Áttekintés** oldalon ellenőrizd: a szolgáltatás fut, az AI elérhető (zöld), a szabályok betöltve.
+A program indításakor **mindig a kezelőfelület nyílik meg** a böngészőben, bejelentkezve (token beírása nélkül):
+
+- **Start menü / asztal: EfMailAgent kezelőfelület** ikon. Ha a szolgáltatás fut, csak megnyitja a felületet;
+  ha nem fut, elindítja a programot is.
+- **Az `EfMailAgent.exe` dupla kattintással** (telepítő nélkül is): elindul egy konzolablak (ez maga a program, a
+  bezárásával leáll), és megnyílik a kezelőfelület. Ha a program már fut, a második indítás csak megnyitja a
+  felületet, nem indít még egy példányt.
+- Első indításkor, vagy ha az AI nem érhető el, a **Beállítások** oldal nyílik meg: itt add meg az AI kapcsolatot
+  és azt, hova kerüljenek a CSV fájlok (7.0 fejezet).
+
+A felület címe **http://127.0.0.1:47811/admin** (csak a szerveren érhető el). Ha kézzel nyitod meg, a tokennel lehet
+belépni: `"C:\Program Files\EfMailAgent\EfMailAgent.exe" print-token`.
+
+### 2.4 Az első ellenőrzés
+
+1. Nyisd meg a kezelőfelületet (Start menü: **EfMailAgent kezelőfelület**).
+2. Ha sárga sáv jelzi, hogy „Az AI (helyi LLM) nem érhető el”, kattints a **Beállítások megnyitása** gombra, és add
+   meg az AI szerver címét és a modellt (**Kapcsolat tesztelése**, majd **Mentés**).
+3. Az **Áttekintés** oldalon ellenőrizd: az AI elérhető (zöld), a szabályok betöltve.
 4. A Thunderbirdben a bővítmény beállításai (Kiegészítők > EfMailAgent > Beállítások): **Kapcsolat tesztelése**
    gomb. Zöld „Kapcsolat rendben” üzenetet kell látnod.
 5. Küldj egy próbalevelet a postafiókba „Előrendelés teszt” tárggyal. Pár perc múlva meg kell jelennie a CSV-ben.
 
-### 2.4 Szolgáltatásfiók és hálózati megosztás
+### 2.5 Szolgáltatásfiók és hálózati megosztás
 
 - A `LocalSystem` fiók a hálózaton a **számítógépfiókként** (`TARTOMANY\SZERVERNEV$`) jelenik meg, ezért
   megosztásra csak akkor tud írni, ha a gépfióknak van rá joga. Egyszerűbb egy külön tartományi fiók (pl.
@@ -242,10 +256,24 @@ memóriájába (kontextus) sem biztos, hogy belefér. Ilyenkor csak a gyakori pa
 
 ## 7. A CSV fájl
 
+### 7.0 Hova kerülnek a fájlok (Beállítások > Kimenet)
+
+A kezelőfelület **Beállítások** oldalán, a **Kimenet: hova kerülnek a CSV fájlok** részben:
+
+- **Kimeneti mappa**: minden CSV ide kerül, pl. `D:\CSV` vagy egy hálózati megosztás (`\\szerver\megosztas\csv`).
+  Mentéskor a program ellenőrzi, hogy a mappa írható-e. A változás azonnal érvényes, újraindítás nem kell.
+- **CSV fájlok szabályonként**: minden szabálynál (levéltípusnál) megadható
+  - a **mód**: *Egy gyűjtő fájl* (a sorok ugyanabba a fájlba kerülnek egymás után) vagy *Levelenként külön fájl*;
+  - a **fájlnév**, helyettesítőkkel: `{yyyy}` év, `{MM}` hónap, `{dd}` nap, `{ruleId}` a szabály azonosítója,
+    `{jobId}` a feladat azonosítója. Például `eloreendeles_{yyyy}-{MM}.csv` havonta új fájl,
+    `eloreendeles_{yyyy}-{MM}-{dd}.csv` naponta új fájl, `rendeles_{jobId}.csv` levelenként egy fájl.
+  - A sor alatt látszik, pontosan milyen nevű fájl keletkezik ma. Mappát a név nem tartalmazhat. **Mentés**
+    szabályonként.
+
 ### 7.1 Formátum
 
 - Hely: a kimeneti mappa (alapból `C:\ProgramData\EfMailAgent\output\`), pl. `eloreendeles_2026-11.csv`
-  (havonta új fájl).
+  (havonta új fájl, a név a Beállításokban módosítható).
 - UTF-8 (BOM-mal, így az Excel helyesen mutatja az ékezeteket), pontosvessző elválasztó, tizedesvessző.
 - Excelben dupla kattintással megnyitható.
 - Biztonság: ha egy szöveges cella `=`, `+`, `-` vagy `@` jellel kezdődne, a program egy `'` jelet tesz elé, hogy az
@@ -304,6 +332,8 @@ ellenőrzendő 11, hiba 1), átlagos feldolgozási idő 38,2 mp, jelenleg a sorb
 | **Sok „hiba” állapotú levél** | A modell gyenge vagy túl kicsi a kontextus a hosszú prompthoz | Tesztkonzolban nézd meg a nyers választ. Próbálj nagyobb modellt, vagy rövidítsd a skill listákat. |
 | **Lassú feldolgozás** | Nincs GPU, túl nagy modell | `EfMailAgent.exe benchmark eloreendeles` megméri a levelenkénti időt. Kisebb modell vagy GPU segít. |
 | **Hibás szabály** | Elgépelés a `rule.yaml`-ban kézi szerkesztés után | Az admin Szabályok oldala piros jelzéssel mutatja a hibát; a többi szabály tovább működik. Parancssorban: `EfMailAgent.exe validate-rules`. |
+| **Dupla kattintás után a konzolablak hibát ír és Entert vár** | Az adatmappa nem írható, vagy a beállítások hibásak | Olvasd el a hiba okát az ablakban. Ha a szolgáltatás telepítve van, a kezelőfelületet a Start menü **EfMailAgent kezelőfelület** ikonjával nyisd meg. |
+| **„Az indítási link lejárt”** a belépő oldalon | A bejelentkező link 2 percig és csak egyszer érvényes (pl. a böngésző fülét később frissítetted) | Nyisd meg újra a Start menü ikonnal, vagy lépj be a tokennel (`print-token`). |
 | **A szolgáltatás nem indul** | Foglalt port (47811) vagy hibás `appsettings.json` | Nézd meg a naplót: `C:\ProgramData\EfMailAgent\logs\`. Konzolos próba: `EfMailAgent.exe` (paraméter nélkül) kiírja a hibát. |
 
 Naplók: `C:\ProgramData\EfMailAgent\logs\` (naponta új fájl), illetve az admin felület **Napló** oldala. A levelek
@@ -360,7 +390,8 @@ A `--help` minden parancsnál magyar leírást ad.
 | Parancs | Mire jó |
 |---|---|
 | `print-token` | Kiírja a tokent |
-| `open-admin` | Megnyitja az admin felületet |
+| *(paraméter nélkül)* | Elindítja a programot és megnyitja a kezelőfelületet; ha már fut, csak a felületet nyitja meg (`--no-browser`: böngésző nélkül) |
+| `open-admin` | Megnyitja a kezelőfelületet, bejelentkezve |
 | `validate-rules` | Ellenőrzi a szabályokat |
 | `test-rule <szabaly> <fajl>` | Egy levelet lefuttat egy szabályon (CSV írás nélkül) |
 | `benchmark <szabaly>` | Megméri a feldolgozási időt a mintaleveleken |

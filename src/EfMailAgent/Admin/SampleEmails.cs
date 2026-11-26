@@ -6,12 +6,12 @@ namespace EfMailAgent.Admin;
 
 public sealed record SampleEmail(string File, string Subject, string From, DateTimeOffset? ReceivedAt, string Body);
 
-/// <summary>Sample emails for the Tesztkonzol (samples\emails next to the exe or in the repository).</summary>
+/// <summary>Sample emails for the Tesztkonzol (samples\emails next to the exe or in the repository, else the ones built into the exe).</summary>
 public static class SampleEmails
 {
     public static IReadOnlyList<SampleEmail> Load(string? emailsDir = null)
     {
-        emailsDir ??= SampleLocator.FindSamplesSubfolder("emails");
+        emailsDir ??= SampleLocator.FindSamplesSubfolder("emails") ?? EmbeddedSamples.ExtractedFolder("emails");
         if (emailsDir is null || !Directory.Exists(emailsDir))
             return [];
 

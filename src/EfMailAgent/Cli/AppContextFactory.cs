@@ -7,9 +7,12 @@ using Serilog.Extensions.Logging;
 namespace EfMailAgent.Cli;
 
 /// <summary>Everything a command needs after first-run initialization.</summary>
-public sealed class AgentContext(EffectiveSettings settings, Serilog.ILogger serilog, ILoggerFactory loggerFactory) : IDisposable
+public sealed class AgentContext(EffectiveSettings settings, Serilog.ILogger serilog, ILoggerFactory loggerFactory, BootstrapReport? report = null) : IDisposable
 {
     public EffectiveSettings Settings { get; } = settings;
+
+    /// <summary>What the first-run initialization did (settings created, samples copied).</summary>
+    public BootstrapReport Report { get; } = report ?? new BootstrapReport(false, false, null);
     public Serilog.ILogger Serilog { get; } = serilog;
 
     /// <summary>Logger for messages of the application itself (not of a specific class).</summary>
@@ -66,6 +69,6 @@ public static class AgentContextFactory
         if (report.SamplesCopiedFrom is not null)
             log.Information("A szabálymappa üres volt, a mintaszabályok átmásolva innen: {Source}", report.SamplesCopiedFrom);
 
-        return new AgentContext(settings, serilog, loggerFactory);
+        return new AgentContext(settings, serilog, loggerFactory, report);
     }
 }

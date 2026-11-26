@@ -51,12 +51,20 @@ Source: "{#RepoDir}\samples\emails\*"; DestDir: "{app}\samples\emails"; Flags: i
 Source: "{#RepoDir}\docs\USER_GUIDE_HU.md"; DestDir: "{app}"; Flags: ignoreversion
 #endif
 
+[Tasks]
+Name: "desktopicon"; Description: "Asztali ikon: EfMailAgent kezelőfelület"; GroupDescription: "Ikonok:"
+
+[Icons]
+; Starts the program or, if it already runs (service), only opens the admin UI logged in.
+Name: "{autoprograms}\EfMailAgent kezelőfelület"; Filename: "{app}\EfMailAgent.exe"; WorkingDir: "{app}"; Comment: "Az EfMailAgent kezelőfelületének megnyitása"
+Name: "{autodesktop}\EfMailAgent kezelőfelület"; Filename: "{app}\EfMailAgent.exe"; WorkingDir: "{app}"; Comment: "Az EfMailAgent kezelőfelületének megnyitása"; Tasks: desktopicon
+
 [Dirs]
 ; The data folder survives uninstall unless the user explicitly asks to delete it.
 Name: "{commonappdata}\EfMailAgent"; Flags: uninsneveruninstall
 
 [Run]
-Filename: "{app}\EfMailAgent.exe"; Parameters: "open-admin"; Description: "Az admin felület megnyitása a böngészőben"; Flags: postinstall nowait skipifsilent runhidden runasoriginaluser
+Filename: "{app}\EfMailAgent.exe"; Parameters: "open-admin"; Description: "A kezelőfelület megnyitása a böngészőben"; Flags: postinstall nowait skipifsilent runhidden runasoriginaluser
 
 [UninstallRun]
 Filename: "{app}\EfMailAgent.exe"; Parameters: "uninstall-addon"; Flags: runhidden waituntilterminated; RunOnceId: "UninstallAddon"

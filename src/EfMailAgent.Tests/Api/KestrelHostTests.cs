@@ -57,6 +57,64 @@ public class KestrelHostTests
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
     }
 
+    [Fact]
+    public async Task Second_start_next_to_a_running_instance_does_not_start_a_worker()
+    {
+        using var tmp = new TempDir();
+        var port = FreePort();
+        var settings = Settings(tmp, port);
+        tmp.WriteFile("appsettings.json", System.Text.Json.JsonSerializer.Serialize(settings.Settings));
+        await using var app = ApiHost.Build(settings, new LoggerConfiguration().CreateLogger());
+        await app.StartAsync();
+
+        // Same data folder and token, like double-clicking the exe while the service runs (scripted: no browser).
+        var code = await CliApp.RunAsync(["--data-dir", tmp.Path, "--no-browser"], new StringWriter(), new StringWriter());
+
+        Assert.Equal(ExitCodes.PortInUse, code);
+        var log = string.Concat(Directory.GetFiles(tmp.Combine("logs")).Select(File.ReadAllText));
+        Assert.Contains("port foglalt", log);
+        Assert.DoesNotContain("A feldolgozó elindult", log); // the second instance never touched the queue
+        await app.StopAsync();
+        Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+    }
+
+    [Fact]
+    public async Task Starting_again_while_running_only_opens_the_ui_and_writes_nothing()
+    {
+        using var tmp = new TempDir();
+        var port = FreePort();
+        var settings = Settings(tmp, port);
+        tmp.WriteFile("appsettings.json", System.Text.Json.JsonSerializer.Serialize(settings.Settings));
+        await using var app = ApiHost.Build(settings, new LoggerConfiguration().CreateLogger());
+        await app.StartAsync();
+        var filesBefore = Directory.GetFiles(tmp.Path, "*", SearchOption.AllDirectories).Order().ToArray();
+        Environment.SetEnvironmentVariable(AdminLauncher.NoBrowserVariable, "1");
+        try
+        {
+            var output = new StringWriter();
+            Assert.True(await AdminLauncher.OpenRunningInstanceAsync(tmp.Path, output, CancellationToken.None));
+            Assert.Contains("Az EfMailAgent már fut", output.ToString());
+            Assert.Contains($"http://127.0.0.1:{port}/admin/", output.ToString());
+            Assert.Equal(filesBefore, Directory.GetFiles(tmp.Path, "*", SearchOption.AllDirectories).Order().ToArray());
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(AdminLauncher.NoBrowserVariable, null);
+        }
+
+        await app.StopAsync();
+        Assert.False(await AdminLauncher.OpenRunningInstanceAsync(tmp.Path, new StringWriter(), CancellationToken.None)); // not running: start normally
+        Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+    }
+
+    [Fact]
+    public void Read_only_settings_of_a_missing_data_folder_create_nothing()
+    {
+        using var tmp = new TempDir();
+        Assert.Null(AdminLauncher.LoadReadOnly(tmp.Combine("nincs")));
+        Assert.False(Directory.Exists(tmp.Combine("nincs")));
+    }
+
     private static EffectiveSettings Settings(TempDir tmp, int port)
     {
         var appSettings = new AppSettings();

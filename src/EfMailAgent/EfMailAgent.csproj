@@ -31,6 +31,9 @@
   <ItemGroup>
     <!-- Admin UI: flat folder, served from embedded resources named admin/<file>. -->
     <EmbeddedResource Include="Admin\wwwroot\*" LogicalName="admin/%(Filename)%(Extension)" />
+    <!-- Sample rules and emails, so that EfMailAgent.exe also works on its own (without the installer's samples folder). -->
+    <EmbeddedResource Include="..\..\samples\rules\**\*" LogicalName="samples/rules/$([System.String]::Copy('%(RecursiveDir)').Replace('\','/'))%(Filename)%(Extension)" />
+    <EmbeddedResource Include="..\..\samples\emails\**\*" LogicalName="samples/emails/$([System.String]::Copy('%(RecursiveDir)').Replace('\','/'))%(Filename)%(Extension)" />
   </ItemGroup>
 
   <ItemGroup>

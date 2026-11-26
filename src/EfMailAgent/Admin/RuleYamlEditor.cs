@@ -82,6 +82,40 @@ public static partial class RuleYamlEditor
     }
 
     /// <summary>Replaces the old rule id inside the output file pattern (so a duplicated rule writes its own CSV).</summary>
+    /// <summary>
+    /// Sets a scalar directly under the top-level 'output:' block (mode, file), keeping comments and the columns list.
+    /// Inserts it as the first child if missing.
+    /// </summary>
+    public static string SetOutputScalar(string yaml, string key, string valueLiteral)
+    {
+        var lines = Lines(yaml);
+        var start = lines.FindIndex(l => Regex.IsMatch(l, @"^output\s*:\s*(#.*)?$"));
+        if (start < 0)
+            throw new FormatException("A rule.yaml-ban nincs 'output:' blokk.");
+
+        string? childIndent = null;
+        for (var i = start + 1; i < lines.Count; i++)
+        {
+            if (lines[i].Trim().Length == 0 || lines[i].TrimStart().StartsWith('#'))
+                continue;
+            var indent = lines[i][..(lines[i].Length - lines[i].TrimStart().Length)];
+            if (indent.Length == 0)
+                break; // next top-level key: end of the output block
+            childIndent ??= indent;
+            if (indent != childIndent)
+                continue; // deeper (columns entries)
+            var match = Regex.Match(lines[i], $"^{Regex.Escape(indent)}{Regex.Escape(key)}\\s*:(?<value>[^#]*)(?<comment>#.*)?$");
+            if (match.Success)
+            {
+                var comment = match.Groups["comment"].Success ? "  " + match.Groups["comment"].Value.Trim() : "";
+                lines[i] = $"{indent}{key}: {valueLiteral}{comment}";
+                return Join(lines);
+            }
+        }
+        lines.Insert(start + 1, $"{childIndent ?? "  "}{key}: {valueLiteral}");
+        return Join(lines);
+    }
+
     public static string ReplaceInOutputFile(string yaml, string oldId, string newId)
     {
         var lines = Lines(yaml);

@@ -216,3 +216,12 @@ dl.meta dd { margin: 0; word-break: break-word; }
 .spinner { width: 16px; height: 16px; border: 2px solid var(--border); border-top-color: var(--primary); border-radius: 50%; animation: spin 0.8s linear infinite; display: inline-block; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .empty { padding: 28px; text-align: center; color: var(--muted); }
+.banner { display: flex; gap: 16px; align-items: center; justify-content: space-between; flex-wrap: wrap; padding: 14px 18px; border-radius: var(--radius); margin-bottom: 18px; border: 1px solid var(--border); }
+.banner.warn { background: var(--warn-soft); border-color: color-mix(in srgb, var(--warn) 45%, transparent); }
+.banner p { margin: 4px 0 0; }
+a.button { display: inline-block; font-weight: 550; padding: 8px 14px; border-radius: 7px; border: 1px solid var(--border); text-decoration: none; color: var(--text); background: var(--surface); white-space: nowrap; }
+a.button.primary { background: var(--primary); border-color: var(--primary); color: var(--primary-text); }
+table.output-rules td { vertical-align: top; }
+table.output-rules td:nth-child(1) { width: 22%; }
+table.output-rules td:nth-child(2) { width: 26%; }
+table.output-rules td:last-child { width: 1%; }

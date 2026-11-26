@@ -1,5 +1,34 @@
 # EfMailAgent kiadási megjegyzések
 
+## 1.1.0 (2026-11-26)
+
+### Újdonságok
+
+- **Indításkor mindig megnyílik a kezelőfelület**, bejelentkezve (token beírása nélkül, egyszer használható,
+  2 percig érvényes indítási linkkel). Első indításkor, vagy ha az AI nem érhető el, a Beállítások oldal nyílik meg.
+- Ha a program már fut (például szolgáltatásként), az újabb indítás csak megnyitja a kezelőfelületet, és nem indít
+  egy második példányt.
+- **Start menü és asztali ikon: „EfMailAgent kezelőfelület”** (a telepítő hozza létre).
+- **Beállítások > Kimenet**: a kimeneti mappa mellett szabályonként beállítható a CSV fájl neve és módja (egy gyűjtő
+  fájl vagy levelenként külön fájl), előnézettel arról, hogy milyen nevű fájl keletkezik.
+- Az Áttekintés oldalon sárga sáv jelzi, ha az AI nincs beállítva vagy nem érhető el, egy gombbal a Beállításokhoz.
+
+### Javítások
+
+- Az önállóan (telepítő nélkül) indított `EfMailAgent.exe` nem kapta meg a mintaszabályokat („0 érvényes szabály”,
+  „Hiányzik a közös rendszerprompt”). A mintaszabályok és a mintalevelek most a programba vannak építve. Aki az
+  1.0.0-t már így indította: az 1.1.0 első indításakor az üres szabálymappa automatikusan feltöltődik.
+- Ha a program futása közben valaki elindított egy második példányt, annak feldolgozója a portfoglalás észlelése
+  előtt elindulhatott, és hozzányúlhatott a sorhoz. A második példány most semmit nem indít el.
+- Dupla kattintásos indításkor hiba esetén a konzolablak nyitva marad, így a hiba oka elolvasható.
+
+### Ellenőrizve a kiadás előtt
+
+- 305 C# és 85 add-on teszt, végponttól végpontig szimuláció.
+- Kezelőfelület használati teszt (43 lépés, böngészőben): Linuxon és a telepített Windows szolgáltatáson is.
+- Windowson: az önálló exe egy üres mappából is megkapja a mintaszabályokat; a telepítő létrehozza a Start menü és az
+  asztali ikont (eltávolításkor törli), az `open-admin` működik; telepítés, frissítés, eltávolítás.
+
 ## 1.0.0 (2026-11-26)
 
 Az első teljes kiadás.

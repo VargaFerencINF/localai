@@ -161,3 +161,16 @@ Valódi Thunderbirddel, valódi helyi modellel, a v1.0.0 telepítővel.
 - [ ] Egy szűrővel archív (különleges) mappába mozgatott, figyelt mappaként beállított levél is feldolgozódik.
 - [ ] A kézikönyv (`USER_GUIDE_HU.md` a programmappában) lépései a valós szerveren követhetők; az
       eltéréseket jegyezd fel.
+
+## 1.1.0: a kezelőfelület indításkor megnyílik
+
+- [ ] Az `EfMailAgent.exe` egy üres mappából dupla kattintással (szolgáltatás nélkül): konzolablak nyílik, és a
+      böngészőben bejelentkezve megnyílik a kezelőfelület **Beállítások** oldala; a szabályok listájában ott van az
+      „Előrendelés feldolgozás” (nem „0 érvényes szabály”).
+- [ ] Ugyanez még egyszer, miközben az első fut: nem indul második példány, csak megnyílik a felület (Áttekintés).
+- [ ] Telepítés után: Start menü és asztal „EfMailAgent kezelőfelület” ikon; rákattintva (sima felhasználóként is)
+      bejelentkezve megnyílik a felület, a szolgáltatás közben fut tovább.
+- [ ] Beállítások > Kimenet: a kimeneti mappa átállítása (pl. `D:\CSV`) és egy szabály fájlnevének módosítása után a
+      következő levél sorai a megadott helyre és névvel kerülnek.
+- [ ] Az Áttekintésen a sárga „Az AI (helyi LLM) nem érhető el” sáv látszik, amíg az Ollama nem fut, és eltűnik, ha fut.
+

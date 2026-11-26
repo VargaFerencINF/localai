@@ -39,9 +39,9 @@ $settings = [ordered]@{
 
 $log = Join-Path $DataDir 'efmailagent-console'
 if ($Exe.ToLowerInvariant().EndsWith('.dll')) {
-    $process = Start-Process dotnet -ArgumentList @("`"$Exe`"", '--data-dir', "`"$DataDir`"") -PassThru -NoNewWindow -RedirectStandardOutput "$log.out" -RedirectStandardError "$log.err"
+    $process = Start-Process dotnet -ArgumentList @("`"$Exe`"", '--data-dir', "`"$DataDir`"", '--no-browser') -PassThru -NoNewWindow -RedirectStandardOutput "$log.out" -RedirectStandardError "$log.err"
 } else {
-    $process = Start-Process $Exe -ArgumentList @('--data-dir', "`"$DataDir`"") -PassThru -NoNewWindow -RedirectStandardOutput "$log.out" -RedirectStandardError "$log.err"
+    $process = Start-Process $Exe -ArgumentList @('--data-dir', "`"$DataDir`"", '--no-browser') -PassThru -NoNewWindow -RedirectStandardOutput "$log.out" -RedirectStandardError "$log.err"
 }
 
 try {

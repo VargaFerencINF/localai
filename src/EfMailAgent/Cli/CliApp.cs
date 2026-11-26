@@ -79,13 +79,26 @@ public static class CliApp
         ServiceCommands.Add(root, dataDirOption, output, error);
         BenchmarkCommand.Add(root, dataDirOption, output, error);
 
-        // No subcommand: run the worker and the HTTP API (console mode now, Windows Service in Step 7).
+        // No subcommand: run the worker and the HTTP API (console window or Windows service). Started by a person, it also
+        // opens the admin UI in the browser; if it already runs, it only opens the UI.
+        var noBrowserOption = new Option<bool>("--no-browser") { Description = "Ne nyissa meg a kezelőfelületet a böngészőben (szkriptekhez)." };
+        root.Options.Add(noBrowserOption);
         root.SetAction(async (parse, cancellationToken) =>
         {
-            using var context = AgentContextFactory.Create(parse.GetValue(dataDirOption), error, LogEventLevel.Information);
-            if (context is null)
-                return ExitCodes.ConfigurationError;
-            return await RunCommand.RunAsync(context, cancellationToken);
+            var openBrowser = AdminLauncher.ShouldOpenBrowser(parse.GetValue(noBrowserOption));
+            if (openBrowser && await AdminLauncher.OpenRunningInstanceAsync(parse.GetValue(dataDirOption), output ?? Console.Out, cancellationToken))
+                return ExitCodes.Ok;
+            int code;
+            using (var context = AgentContextFactory.Create(parse.GetValue(dataDirOption), error, LogEventLevel.Information))
+                code = context is null ? ExitCodes.ConfigurationError : await RunCommand.RunAsync(context, openBrowser, cancellationToken);
+            if (code != ExitCodes.Ok && openBrowser)
+            {
+                // Started with a double click: keep the console window open so the error can be read.
+                error.WriteLine();
+                error.WriteLine("Az EfMailAgent nem tudott elindulni (a hiba oka fent olvasható). Nyomj Entert a bezáráshoz.");
+                Console.ReadLine();
+            }
+            return code;
         });
 
         return root;

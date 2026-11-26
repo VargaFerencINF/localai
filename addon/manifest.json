@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "EfMailAgent",
   "description": "Az előrendelési és egyéb e-maileket a helyi EfMailAgent szolgáltatásnak küldi AI-alapú feldolgozásra, és címkével jelzi az eredményt.",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "author": "Energofish",
   "browser_specific_settings": {
     "gecko": {

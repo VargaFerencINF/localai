@@ -202,9 +202,11 @@ async function renderOverview(container, args) {
   const cards = el('div', { class: 'grid-cards' });
   const chips = el('div', { class: 'chips' });
   const table = el('div');
+  const banner = el('div');
   container.append(
     el('div', { class: 'page-header' }, el('div', {}, el('h1', { text: 'Áttekintés' }), el('p', { class: 'muted', text: 'A szolgáltatás állapota és a legutóbbi 50 feladat.' })),
       el('button', { type: 'button', onclick: () => refresh() }, 'Frissítés')),
+    banner,
     cards,
     el('div', { class: 'row' }, el('h2', { text: 'Feladatok' }), el('span', { class: 'spacer' }), chips),
     table);
@@ -221,6 +223,15 @@ async function renderOverview(container, args) {
   async function refresh() {
     const [overview, jobs] = await Promise.all([api('GET', '/overview'), api('GET', `/jobs?limit=50${filter ? `&status=${filter}` : ''}`)]);
     $('version').textContent = `v${overview.version}`;
+    banner.textContent = '';
+    if (!overview.llm.reachable || (overview.llm.provider !== 'mock' && !overview.llm.model)) {
+      banner.append(el('div', { class: 'banner warn', id: 'setup-banner' },
+        el('div', {}, el('strong', { text: overview.llm.reachable ? 'Nincs kiválasztva AI modell.' : 'Az AI (helyi LLM) nem érhető el.' }),
+          el('p', { text: overview.llm.reachable
+            ? 'Add meg a Beállítások oldalon, melyik modellel dolgozzon a program.'
+            : 'A beérkező levelek a sorban várnak, amíg az AI el nem érhető. Indítsd el az Ollamát / LM Studiót, vagy add meg a helyes címet és modellt a Beállítások oldalon.' })),
+        el('a', { class: 'button primary', href: '#/beallitasok' }, 'Beállítások megnyitása')));
+    }
     cards.textContent = '';
     const llmState = overview.llm.reachable ? 'ok' : 'error';
     cards.append(
@@ -602,7 +613,7 @@ async function renderTestConsole(container, args) {
 // ---------- Beállítások ----------
 
 async function renderSettings(container) {
-  const s = await api('GET', '/settings');
+  const [s, rules] = await Promise.all([api('GET', '/settings'), api('GET', '/rules')]);
   const field = (label, input, hint) => el('label', { class: 'field' }, el('span', {}, label, hint ? el('span', { class: 'hint', text: ` – ${hint}` }) : null), input);
   const input = (id, value, attrs = {}) => el('input', { id, value: value ?? '', ...attrs });
 
@@ -681,10 +692,14 @@ async function renderSettings(container) {
         mockFields,
         el('div', { class: 'row' }, el('button', { type: 'button', onclick: testLlm }, 'Kapcsolat tesztelése'), el('span', { class: 'muted small', text: 'A modell-lista a tesztelés után a Modell mező javaslataiban jelenik meg.' })),
         llmStatus),
-      el('section', { class: 'card' }, el('h2', { text: 'CSV kimenet' }),
+      el('section', { class: 'card', id: 'output-section' }, el('h2', { text: 'Kimenet: hova kerülnek a CSV fájlok' }),
+        field('Kimeneti mappa', output, 'teljes út, pl. D:\\CSV vagy \\\\szerver\\megosztas\\csv; a mentés ellenőrzi, hogy írható-e'),
+        el('p', { class: 'muted small', text: `Jelenleg: ${s.outputFolderResolved}` }),
+        el('h3', { text: 'CSV fájlok szabályonként' }),
+        outputRules(rules, s.outputFolderResolved)),
+      el('section', { class: 'card' }, el('h2', { text: 'CSV formátum' }),
         el('div', { class: 'form-grid' }, field('Elválasztó', delimiter), field('Tizedesjel', decimal), field('Kódolás', encoding),
-          field('Zárolt fájl: várakozás (mp)', lockRetry, 'utána _pending_ fájl')),
-        field('Kimeneti mappa', output, `most: ${s.outputFolderResolved}; relatív út az adatmappához képest`)),
+          field('Zárolt fájl: várakozás (mp)', lockRetry, 'utána _pending_ fájl'))),
       el('section', { class: 'card' }, el('h2', { text: 'Szolgáltatás' }),
         el('div', { class: 'form-grid' }, field('Port', port, 'újraindítás kell'),
           field('Token', el('input', { type: 'text', value: s.tokenPreview, readonly: true }), 'csak olvasható'),
@@ -692,6 +707,51 @@ async function renderSettings(container) {
           field('Adatmappa', el('input', { type: 'text', value: s.dataDir, readonly: true })))),
       el('div', { class: 'row' }, el('button', { type: 'button', class: 'primary', onclick: save }, 'Mentés'), el('span', { class: 'muted small', text: 'Az AI-, CSV- és mappabeállítások újraindítás nélkül érvényesek; a port változásához újraindítás kell.' })),
       saveStatus));
+}
+
+/** Per-rule CSV file name and mode (rule.yaml output.file / output.mode), saved one rule at a time. */
+function outputRules(rules, folder) {
+  const usable = rules.filter((r) => !r.isBase && r.valid);
+  if (!usable.length) return el('p', { class: 'muted', text: 'Nincs érvényes szabály.' });
+  const example = (pattern) => {
+    const now = new Date();
+    const pad = (n) => String(n).padStart(2, '0');
+    return pattern.replaceAll('{yyyy}', String(now.getFullYear())).replaceAll('{MM}', pad(now.getMonth() + 1)).replaceAll('{dd}', pad(now.getDate()))
+      .replaceAll('{jobId}', '<feladat-azonosító>');
+  };
+  const sep = folder.includes('\\') ? '\\' : '/';
+  const rows = usable.map((rule) => {
+    const mode = el('select', { 'aria-label': `${rule.name}: mód` },
+      el('option', { value: 'append', text: 'Egy gyűjtő fájl (a sorok hozzáfűzve)' }), el('option', { value: 'per_job', text: 'Levelenként külön fájl' }));
+    mode.value = rule.outputMode ?? 'append';
+    const file = el('input', { type: 'text', value: rule.outputFile ?? '', 'aria-label': `${rule.name}: fájlnév`, spellcheck: 'false' });
+    const preview = el('div', { class: 'small muted' });
+    const status = el('div', { class: 'small' });
+    const update = () => {
+      preview.textContent = `Pl.: ${folder}${folder.endsWith(sep) ? '' : sep}${example(file.value.replaceAll('{ruleId}', rule.id))}`;
+    };
+    file.addEventListener('input', update);
+    update();
+    const save = el('button', { type: 'button', onclick: async () => {
+      status.textContent = '';
+      try {
+        const r = await api('POST', `/rules/${encodeURIComponent(rule.folder)}/output`, { mode: mode.value, file: file.value });
+        status.append(messageList([], r.warnings ?? [], 'Mentve.'));
+      } catch (error) {
+        status.append(messageList(error.body?.errors ?? [error.message]));
+      }
+    } }, 'Mentés');
+    return el('tr', {},
+      el('td', {}, el('strong', { text: rule.name ?? rule.folder }), rule.enabled ? null : el('div', { class: 'small muted', text: 'kikapcsolva' })),
+      el('td', {}, mode),
+      el('td', {}, file, preview, status),
+      el('td', {}, save));
+  });
+  return el('div', {},
+    el('div', { class: 'table-wrap' }, el('table', { class: 'output-rules' },
+      el('thead', {}, el('tr', {}, ...['Szabály', 'Mód', 'Fájlnév', ''].map((h) => el('th', { text: h })))),
+      el('tbody', {}, rows))),
+    el('p', { class: 'muted small', text: 'Helyettesítők a fájlnévben: {yyyy} év, {MM} hónap, {dd} nap, {ruleId} a szabály azonosítója, {jobId} a feladat azonosítója (levelenkénti fájlhoz). Mappát nem tartalmazhat.' }));
 }
 
 // ---------- Napló ----------
@@ -740,8 +800,13 @@ async function renderLogs(container) {
   try {
     const session = await api('GET', '/session');
     $('version').textContent = `v${session.version}`;
+    const expiredLink = new URLSearchParams(location.search).get('link') === 'lejart';
+    if (expiredLink) history.replaceState(null, '', location.pathname + location.hash);
     if (session.authenticated) showApp();
-    else showLogin();
+    else {
+      showLogin();
+      if (expiredLink) $('login-error').textContent = 'Az indítási link lejárt vagy már felhasználták. Indítsd újra a programot (vagy a Start menü „EfMailAgent kezelőfelület” ikonját), vagy add meg a tokent.';
+    }
   } catch {
     showLogin();
   }

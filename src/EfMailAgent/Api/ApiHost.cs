@@ -45,6 +45,7 @@ public static class ApiHost
         builder.Services.AddEfMailAgentWorker();
         builder.Services.AddSingleton<LlmHealthCache>();
         builder.Services.AddSingleton<Admin.AdminSessions>();
+        builder.Services.AddSingleton<Admin.LoginCodeRegistry>();
         builder.Services.AddSingleton<Admin.RuleFileService>();
         builder.Services.AddSingleton<Admin.SettingsService>();
         builder.Services.AddSingleton<Addon.AddonSelfHealService>();

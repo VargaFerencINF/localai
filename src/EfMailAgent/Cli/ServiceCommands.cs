@@ -86,22 +86,25 @@ internal static class ServiceCommands
         root.Subcommands.Add(stop);
 
         // open-admin
-        var openAdmin = new Command("open-admin", "Megnyitja az admin felületet a böngészőben.");
-        openAdmin.SetAction(parse =>
+        var openAdmin = new Command("open-admin", "Megnyitja a kezelőfelületet a böngészőben, bejelentkezve.");
+        var pageOption = new Option<string?>("--page") { Description = "A megnyitandó oldal: attekintes, szabalyok, tesztkonzol, beallitasok, naplo." };
+        openAdmin.Options.Add(pageOption);
+        openAdmin.SetAction(async (parse, cancellationToken) =>
         {
-            using var context = AgentContextFactory.Create(parse.GetValue(dataDirOption), error, LogEventLevel.Warning);
-            if (context is null)
+            // Read-only (also run by the installer as the normal user): nothing is created or written.
+            var settings = AdminLauncher.LoadReadOnly(parse.GetValue(dataDirOption));
+            if (settings is null)
+            {
+                error.WriteLine("Nincsenek beállítások (appsettings.json). Indítsd el egyszer az EfMailAgent.exe-t, vagy telepítsd a telepítővel.");
                 return ExitCodes.ConfigurationError;
-            var url = $"http://127.0.0.1:{context.Settings.Settings.Server.Port}/admin/";
-            output.WriteLine(url);
-            try
-            {
-                Process.Start(new ProcessStartInfo(url) { UseShellExecute = true })?.Dispose();
             }
-            catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException or PlatformNotSupportedException)
-            {
-                error.WriteLine($"A böngésző nem nyitható meg: {ex.Message}");
-            }
+            if (!await AdminLauncher.IsRunningAsync(settings, cancellationToken))
+                error.WriteLine("Figyelem: az EfMailAgent most nem válaszol. Indítsd el (EfMailAgent.exe vagy a szolgáltatás), különben a böngésző nem tudja megnyitni a felületet.");
+            // Logged in through a one-time link: the UI opens without asking for the token.
+            output.WriteLine(AdminLauncher.PlainUrl(settings));
+            var failure = AdminLauncher.TryOpen(AdminLauncher.LoginUrl(settings, parse.GetValue(pageOption)));
+            if (failure is not null)
+                error.WriteLine($"A böngésző nem nyitható meg: {failure}");
             return ExitCodes.Ok;
         });
         root.Subcommands.Add(openAdmin);

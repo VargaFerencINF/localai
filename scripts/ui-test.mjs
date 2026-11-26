@@ -11,6 +11,7 @@
 import { createRequire } from 'node:module';
 import { spawn, execFileSync } from 'node:child_process';
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { createHmac, randomBytes } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -136,12 +137,19 @@ async function startServer() {
   // Like a fresh installation: Ollama at the default address, nothing running there.
   execFileSync(cmd, [...pre, 'configure', '--data-dir', dataDir, '--llm-provider', 'ollama', '--llm-base-url', 'http://127.0.0.1:9'], { stdio: 'ignore' });
   token = JSON.parse(readFileSync(join(dataDir, 'appsettings.json'), 'utf8').replace(/^﻿/, '')).Server.Token;
-  server = spawn(cmd, [...pre, '--data-dir', dataDir], { stdio: ['ignore', 'pipe', 'pipe'] });
+  server = spawn(cmd, [...pre, '--data-dir', dataDir, '--no-browser'], { stdio: ['ignore', 'pipe', 'pipe'] });
   let log = '';
   server.stdout.on('data', (d) => { log += d; });
   server.stderr.on('data', (d) => { log += d; });
   await until(async () => (await fetch(`${URL_BASE}/api/health`, { headers: { 'X-EfMailAgent-Token': token } })).ok,
     `az EfMailAgent nem indult el:\n${log}`, 30_000);
+}
+
+/** The one-time login link the exe opens on start (same format as src/EfMailAgent/Admin/LoginLink.cs). */
+function loginLink(page) {
+  const payload = `${Math.floor(Date.now() / 1000)}.${randomBytes(12).toString('base64url')}`;
+  const signature = createHmac('sha256', `efmailagent-login-link:${token}`).update(payload).digest('base64url');
+  return `${ADMIN}login?code=${encodeURIComponent(`${payload}.${signature}`)}${page ? `&page=${page}` : ''}`;
 }
 
 // ---------- page helpers ----------
@@ -236,11 +244,31 @@ try {
     assert(/^v\d+\.\d+\.\d+/.test(await page.textContent('#version')), 'nincs verziószám');
   });
 
+  await check('indítási link (amit a program megnyit): token nélkül belép, a Beállítások oldalon', async () => {
+    const fresh = await newPage(browser);
+    const link = loginLink('beallitasok');
+    await fresh.goto(link);
+    await fresh.waitForSelector('#app:not([hidden])');
+    await fresh.waitForSelector('#set-provider');
+    assert(fresh.url().endsWith('#/beallitasok'), `oldal: ${fresh.url()}`);
+    await fresh.context().close();
+    const again = await newPage(browser);
+    await again.goto(link);
+    await again.waitForSelector('#login:not([hidden])');
+    await until(async () => (await again.textContent('#login-error')).includes('lejárt'), 'a felhasznált link nem ad érthető üzenetet');
+    assert(!again.url().includes('link='), 'a hibaparaméter az URL-ben maradt');
+    await again.context().close();
+  });
+
   await section('2. Első indulás: az AI még nincs beállítva');
-  await check('az Áttekintés jelzi, hogy az AI nem érhető el', async () => {
+  await check('az Áttekintés jelzi, hogy az AI nem érhető el, és a Beállításokhoz vezet', async () => {
     await go(page, '#/attekintes');
     await until(async () => (await page.textContent('.grid-cards')).includes('nem érhető el'), 'az AI kártya nem jelzi a hibát');
+    await page.waitForSelector('#setup-banner >> text=Beállítások megnyitása');
     await shot(page, '02-ai-nem-erheto-el');
+    await page.click('#setup-banner >> text=Beállítások megnyitása');
+    await page.waitForSelector('#set-provider');
+    await go(page, '#/attekintes');
   });
   let waitingJob;
   await check('levél érkezik AI nélkül: sorban marad, a felület jelzi a szünetet', async () => {
@@ -286,6 +314,7 @@ try {
       'a várakozó levél nem dolgozódott fel', 60_000, 1000);
     await go(page, '#/attekintes');
     await until(async () => (await page.textContent('.grid-cards')).includes('elérhető'), 'az AI kártya nem lett zöld');
+    assert(!(await page.isVisible('#setup-banner')), 'a figyelmeztetés a beállítás után is látszik');
   });
 
   await section('4. Áttekintés: feladatok követése');
@@ -458,7 +487,36 @@ try {
     await until(async () => (await page.textContent('tbody')).includes('Reklamáció'), 'nem jelent meg a listában');
   });
 
-  await section('8. Napló');
+  await section('8. Kimenet: CSV fájl szabályonként (Beállítások)');
+  await check('a Beállításokban szabályonként látszik a fájlnév és a teljes út előnézete', async () => {
+    await go(page, '#/beallitasok');
+    const row = page.locator('#output-section tr', { hasText: 'Reklamáció feldolgozás' });
+    assert((await row.locator('input').inputValue()) === 'reklamacio_{yyyy}-{MM}.csv', 'nem a szabály fájlneve látszik');
+    await row.locator('input').fill('panasz_{yyyy}{MM}{dd}.csv');
+    const y = new Date().getFullYear();
+    assert((await row.textContent()).includes(`panasz_${y}`), 'az előnézet nem frissül');
+    await shot(page, '10-kimenet');
+  });
+  await check('hibás fájlnév (mappával): nem menti, magyar hibaüzenet', async () => {
+    const row = page.locator('#output-section tr', { hasText: 'Reklamáció feldolgozás' });
+    await row.locator('input').fill('../panasz.csv');
+    await row.locator('button:has-text("Mentés")').click();
+    await until(async () => (await row.textContent()).includes('nem tartalmazhat mappát'), 'nincs érthető hibaüzenet');
+  });
+  let newFile;
+  await check('új fájlnév mentése: a következő levél már oda kerül', async () => {
+    const row = page.locator('#output-section tr', { hasText: 'Reklamáció feldolgozás' });
+    await row.locator('input').fill('panasz_{yyyy}{MM}{dd}.csv');
+    await row.locator('button:has-text("Mentés")').click();
+    await until(async () => (await row.textContent()).includes('Mentve'), 'nincs „Mentve”');
+    const job = submit('Fwd: Reklamáció - második eset');
+    const done = await until(async () => { const j = await apiGet(`/api/jobs/${job.jobId}`); return j.status === 'done' && j; }, 'nem lett kész', 30_000, 500);
+    newFile = done.outputFile;
+    assert(/panasz_\d{8}\.csv$/.test(newFile), `fájl: ${newFile}`);
+    assert(readFileSync(newFile, 'utf8').startsWith('\uFEFFjob_id;'), 'az új fájl nem fejléccel kezdődik');
+  });
+
+  await section('9. Napló');
   await check('a napló mutatja a feldolgozásokat; a szűrők kompakt méretűek', async () => {
     await go(page, '#/naplo');
     await until(async () => (await page.locator('.log-line').count()) > 5, 'kevés naplósor');
@@ -474,7 +532,7 @@ try {
     }, 'nem csak hibák látszanak');
   });
 
-  await section('9. Akadálymentesség, elrendezés, sötét mód, telefon');
+  await section('10. Akadálymentesség, elrendezés, sötét mód, telefon');
   await check('minden látható mezőnek és gombnak van neve', async () => {
     const bad = [];
     for (const hash of ['#/attekintes', '#/szabalyok', '#/tesztkonzol', '#/beallitasok', '#/naplo']) {
@@ -484,8 +542,8 @@ try {
     assert(!bad.length, bad.slice(0, 4).join('\n'));
   });
   for (const [label, options, prefix] of [
-    ['sötét mód (1440 px)', { colorScheme: 'dark' }, '10-sotet'],
-    ['telefon (390 px)', { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true }, '11-telefon'],
+    ['sötét mód (1440 px)', { colorScheme: 'dark' }, '11-sotet'],
+    ['telefon (390 px)', { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true }, '12-telefon'],
   ]) {
     await check(`${label}: minden oldal görgetés nélkül fér el vízszintesen`, async () => {
       const p = await newPage(browser, options);
@@ -504,7 +562,7 @@ try {
     });
   }
 
-  await section('10. Kijelentkezés');
+  await section('11. Kijelentkezés');
   await check('kijelentkezés után a belső oldalak nem érhetők el', async () => {
     await page.click('#logout');
     await page.waitForSelector('#login:not([hidden])');

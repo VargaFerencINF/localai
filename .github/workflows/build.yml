@@ -11,6 +11,7 @@ concurrency:
 
 env:
   DOTNET_NOLOGO: "1"
+  EFMAILAGENT_NO_BROWSER: "1"
   DOTNET_CLI_TELEMETRY_OPTOUT: "1"
 
 jobs:
@@ -45,7 +46,7 @@ jobs:
       - name: API smoke test (service mode + dev-submit)
         run: |
           D="$RUNNER_TEMP/efapi"
-          dotnet src/EfMailAgent/bin/Release/net10.0/EfMailAgent.dll --data-dir "$D" > "$RUNNER_TEMP/efapi.log" 2>&1 &
+          dotnet src/EfMailAgent/bin/Release/net10.0/EfMailAgent.dll --data-dir "$D" --no-browser > "$RUNNER_TEMP/efapi.log" 2>&1 &
           PID=$!
           for i in $(seq 1 60); do
             if [ -f "$D/appsettings.json" ]; then
@@ -126,13 +127,32 @@ jobs:
           if ($actual[0] -ne 0xEF -or $actual[1] -ne 0xBB -or $actual[2] -ne 0xBF) { throw "CSV has no UTF-8 BOM" }
           if ((Mask $actual) -cne (Mask $expected)) { throw "CSV differs from samples/expected/demo_eloreendeles_01.csv" }
           Write-Host "Smoke test OK"
+      - name: Standalone exe copied alone into an empty folder (no samples folder next to it)
+        shell: pwsh
+        run: |
+          $dir = Join-Path $env:RUNNER_TEMP 'standalone'
+          $data = Join-Path $env:RUNNER_TEMP 'standalone-data'
+          New-Item -ItemType Directory -Force $dir | Out-Null
+          Copy-Item dist/EfMailAgent.exe $dir
+          Push-Location $dir
+          $out = & "$dir\EfMailAgent.exe" validate-rules --data-dir $data | Out-String
+          $code = $LASTEXITCODE
+          Pop-Location
+          Write-Host $out
+          if ($code -ne 0) { throw "validate-rules failed with exit code $code" }
+          foreach ($f in 'rules\_base\system.md', 'rules\eloreendeles\rule.yaml', 'rules\eloreendeles\prompt.md', 'rules\eloreendeles\skills\partnerek.md') {
+            if (-not (Test-Path (Join-Path $data $f))) { throw "the standalone exe did not create $f from its built-in samples" }
+          }
+          if ((Get-Content (Join-Path $data 'appsettings.json') -Raw | ConvertFrom-Json).Llm.Provider -ne 'ollama') { throw 'a standalone first start must default to Ollama' }
+          if (-not ($out -match 'eloreendeles')) { throw 'the sample rule is not listed' }
+          Write-Host 'Standalone exe OK'
       - name: API smoke test (service mode + dev-submit.ps1)
         shell: pwsh
         run: |
           $exe = Resolve-Path dist/EfMailAgent.exe
           $data = Join-Path $env:RUNNER_TEMP 'efapi'
           $log = Join-Path $env:RUNNER_TEMP 'efapi'
-          $process = Start-Process $exe -ArgumentList '--data-dir', $data -PassThru -NoNewWindow `
+          $process = Start-Process $exe -ArgumentList '--data-dir', $data, '--no-browser' -PassThru -NoNewWindow `
             -RedirectStandardOutput "$log.out" -RedirectStandardError "$log.err"
           $ready = $false
           for ($i = 0; $i -lt 60 -and -not $ready; $i++) {
@@ -249,6 +269,17 @@ jobs:
           if ($policies.policies.'3rdparty'.Extensions.'efmailagent@energofish.hu'.token -ne $token) { throw 'the add-on did not get the token' }
           & "$app\EfMailAgent.exe" addon-status
           if ($LASTEXITCODE -ne 0) { throw "addon-status: $LASTEXITCODE" }
+
+          # Shortcuts to the admin UI (Start menu always, desktop by default)
+          foreach ($lnk in "$env:ProgramData\Microsoft\Windows\Start Menu\Programs\EfMailAgent kezelőfelület.lnk", "$env:PUBLIC\Desktop\EfMailAgent kezelőfelület.lnk") {
+            if (-not (Test-Path -LiteralPath $lnk)) { throw "missing shortcut: $lnk" }
+            $target = (New-Object -ComObject WScript.Shell).CreateShortcut($lnk).TargetPath
+            if ($target -ne "$app\EfMailAgent.exe") { throw "shortcut $lnk points to $target" }
+          }
+
+          # open-admin (also used by the installer's last page) works read-only and prints the admin URL
+          $out = & "$app\EfMailAgent.exe" open-admin | Out-String
+          if ($LASTEXITCODE -ne 0 -or -not ($out -match '127\.0\.0\.1:47811/admin/')) { throw "open-admin: $LASTEXITCODE $out" }
           Write-Host 'First install OK'
       - name: Install Playwright (Chromium) for the UI test
         shell: pwsh
@@ -320,6 +351,8 @@ jobs:
           $policies = (Get-Content "$tb\distribution\policies.json" -Raw | ConvertFrom-Json).policies
           if ($policies.ExtensionSettings.'efmailagent@energofish.hu' -or $policies.'3rdparty'.Extensions.'efmailagent@energofish.hu') { throw 'the add-on policy entries were not removed on uninstall' }
           if ($policies.DisableAppUpdate -ne $true) { throw 'uninstall removed an unrelated Thunderbird policy' }
+          if (Test-Path -LiteralPath "$env:ProgramData\Microsoft\Windows\Start Menu\Programs\EfMailAgent kezelőfelület.lnk") { throw 'Start menu shortcut left after uninstall' }
+          if (Test-Path -LiteralPath "$env:PUBLIC\Desktop\EfMailAgent kezelőfelület.lnk") { throw 'desktop shortcut left after uninstall' }
           Write-Host 'Installer test OK'
       - uses: actions/upload-artifact@v4
         if: always()
