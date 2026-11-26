@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>EfMailAgent beállítások</title>
+  <link rel="stylesheet" href="options.css">
+</head>
+<body>
+  <header class="page-header">
+    <img src="../icons/efmailagent.svg" alt="" width="40" height="40">
+    <div>
+      <h1>EfMailAgent</h1>
+      <p class="muted">E-mailek AI-alapú feldolgozása a helyi EfMailAgent szolgáltatással</p>
+    </div>
+  </header>
+
+  <main>
+    <section class="card">
+      <h2>Kapcsolat</h2>
+      <p id="managed-info" class="info" hidden>A szerver címét és a tokent a rendszergazda (az EfMailAgent telepítője) állította be, itt nem módosíthatók.</p>
+      <label class="field">
+        <span>Szerver címe</span>
+        <input id="serverUrl" type="url" placeholder="http://127.0.0.1:47811" autocomplete="off">
+      </label>
+      <label class="field">
+        <span>Token</span>
+        <input id="token" type="password" autocomplete="off" spellcheck="false">
+      </label>
+      <div class="row">
+        <button id="test" type="button">Kapcsolat tesztelése</button>
+        <span id="test-result" class="status" role="status"></span>
+      </div>
+      <div id="permission-box" class="warning" hidden>
+        <p>Az add-on még nem kapott engedélyt a helyi szolgáltatás (http://127.0.0.1) elérésére.</p>
+        <button id="grant" type="button">Engedély megadása</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Működés</h2>
+      <label class="switch">
+        <input id="enabled" type="checkbox">
+        <span>Automatikus feldolgozás bekapcsolva</span>
+      </label>
+      <label class="field narrow">
+        <span>Visszamenőleges keresés induláskor (nap)</span>
+        <input id="backfillDays" type="number" min="0" max="60" step="1">
+      </label>
+      <h3>Figyelt mappák</h3>
+      <p class="muted">A Beérkezett üzenetek mappák mindig figyeltek. Itt további mappákat jelölhetsz be.</p>
+      <div id="folders" class="folders" aria-live="polite">Mappák betöltése…</div>
+      <div class="row">
+        <button id="save" type="button" class="primary">Mentés</button>
+        <span id="save-result" class="status" role="status"></span>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Utolsó beküldések</h2>
+      <p id="queue-info" class="muted"></p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Időpont</th><th>Tárgy</th><th>Szabály</th><th>Állapot</th></tr></thead>
+          <tbody id="history"><tr><td colspan="4" class="muted">Még nem volt beküldés.</td></tr></tbody>
+        </table>
+      </div>
+      <div class="row">
+        <button id="refresh" type="button">Frissítés</button>
+        <button id="rescan" type="button">Visszamenőleges keresés most</button>
+      </div>
+    </section>
+  </main>
+
+  <script type="module" src="options.js"></script>
+</body>
+</html>

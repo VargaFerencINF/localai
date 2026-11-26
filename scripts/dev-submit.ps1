@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   Posts a sample email to the running EfMailAgent API and waits for the job to finish (development helper).
 .EXAMPLE

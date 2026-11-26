@@ -1,0 +1,14 @@
+{
+  "messageId": "<fwd-demo-01@ertekesites.example>",
+  "account": "account1",
+  "folder": "/INBOX",
+  "receivedAt": "2026-11-25T08:41:00.000Z",
+  "from": "Kovács Péter <kovacs.peter@ertekesites.example>",
+  "to": [
+    "eloreendeles@ertekesites.example"
+  ],
+  "subject": "Fwd: Előrendelés: Horgász Centrum Kft., tavaszi szezon",
+  "bodyText": "Sziasztok,\n\ntovábbítom a Horgász Centrum előrendelését, kérlek rögzítsétek.\n\nPéter\n\n-------- Továbbított üzenet --------\nTárgy: Előrendelés tavaszra\nDátum: 2026. 11. 24. 14:12\nFeladó: Nagy Gábor <nagy.gabor@horgaszcentrum.example>\nCímzett: Kovács Péter <kovacs.peter@ertekesites.example>\n\nKedves Péter!\n\nA tavaszi szezonra az alábbiakat szeretnénk előrendelni, március elejei szállítással:\n\n- Feeder bot 3,6 m, 120 g: 10 db, 18 500 Ft/db\n- Monofil zsinór 0,25 mm, 150 m: 40 tekercs, 2 490 Ft-os áron\n- EF-H1042 cikkszámú horog, 12-es méret: 25 csomag\n- Etetőanyag ponty-vanília 1 kg: 3 karton (kartononként 12 db), ára a szokásos\n\nHa a feeder botból van 3,9 m-es is, abból is kérnénk 5 darabot, de ez még nem biztos.\n\nÜdvözlettel:\nNagy Gábor\nbeszerzés\nHorgász Centrum Kft.\n\nEz az e-mail bizalmas információkat tartalmazhat. Ha nem Ön a címzett, kérjük, törölje.\n",
+  "attachmentNames": [],
+  "source": "auto"
+}

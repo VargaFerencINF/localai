@@ -22,12 +22,24 @@ jobs:
       - uses: actions/setup-dotnet@v5
         with:
           global-json-file: global.json
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
       - name: Restore
         run: dotnet restore
       - name: Build
         run: dotnet build --no-restore -c Release
       - name: Test
         run: dotnet test --no-build -c Release --logger "trx;LogFileName=linux.trx" --results-directory TestResults
+      - name: Add-on tests (Node)
+        working-directory: addon
+        run: node --test "test/*.test.js"
+      - name: Package add-on (XPI)
+        run: node scripts/package-addon.mjs
+      - name: End-to-end simulation (exe + simulated Thunderbird)
+        env:
+          EFMAILAGENT_DLL: src/EfMailAgent/bin/Release/net10.0/EfMailAgent.dll
+        run: bash scripts/e2e-sim.sh
       - name: Validate sample rules with the CLI
         run: dotnet src/EfMailAgent/bin/Release/net10.0/EfMailAgent.dll validate-rules --data-dir "$RUNNER_TEMP/efdata"
       - name: API smoke test (service mode + dev-submit)
@@ -60,14 +72,19 @@ jobs:
       - uses: actions/setup-dotnet@v5
         with:
           global-json-file: global.json
-      - name: Test
-        run: dotnet test -c Release --logger "trx;LogFileName=windows.trx" --results-directory TestResults
-      - name: Publish single-file exe
-        run: dotnet publish src/EfMailAgent -c Release -r win-x64 --self-contained -p:PublishSingleFile=true -o dist/win-x64
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - name: Build (build.ps1 - tests, XPI, single-file exe)
+        shell: pwsh
+        run: ./build.ps1
+      - name: End-to-end simulation (exe + simulated Thunderbird)
+        shell: pwsh
+        run: ./scripts/e2e-sim.ps1 -Exe dist/EfMailAgent.exe
       - name: Smoke test the exe
         shell: pwsh
         run: |
-          $exe = Resolve-Path dist/win-x64/EfMailAgent.exe
+          $exe = Resolve-Path dist/EfMailAgent.exe
           $data = Join-Path $env:RUNNER_TEMP 'efdata'
           & $exe validate-rules --data-dir $data
           if ($LASTEXITCODE -ne 0) { throw "validate-rules failed with exit code $LASTEXITCODE" }
@@ -96,7 +113,7 @@ jobs:
       - name: API smoke test (service mode + dev-submit.ps1)
         shell: pwsh
         run: |
-          $exe = Resolve-Path dist/win-x64/EfMailAgent.exe
+          $exe = Resolve-Path dist/EfMailAgent.exe
           $data = Join-Path $env:RUNNER_TEMP 'efapi'
           $log = Join-Path $env:RUNNER_TEMP 'efapi'
           $process = Start-Process $exe -ArgumentList '--data-dir', $data -PassThru -NoNewWindow `
@@ -119,9 +136,8 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: EfMailAgent-win-x64
-          path: dist/win-x64/EfMailAgent.exe
+          path: dist/EfMailAgent.exe
       - uses: actions/upload-artifact@v4
-        if: always()
         with:
-          name: test-results-windows
-          path: TestResults
+          name: efmailagent-xpi
+          path: dist/efmailagent.xpi

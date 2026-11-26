@@ -54,3 +54,23 @@ Előkészítés: az `appsettings.json`-ban `"Llm": { "Provider": "ollama", "Base
       következő indításkor feldolgozódik.
 - [ ] A Thunderbird add-on (4. lépés) kéréseinél a naplóban (Debug szinten) látszik az `Origin: moz-extension://…`
       fejléc, és a kérések nem akadnak el CORS miatt (lásd D-303).
+
+## 4. lépés: Thunderbird add-on
+
+Részletes lépések: `docs/TESTING.md`, „Thunderbird add-on kézi tesztje”.
+
+- [ ] A szerveren futó Thunderbird verziója (Súgó > A Thunderbird névjegye): ______. Legalább 128 kell (D-401);
+      ha 128 alatti, szólni kell.
+- [ ] A `dist\efmailagent.xpi` ideiglenesen betölthető (Eszközök > Fejlesztői eszközök > Kiegészítők hibakeresése),
+      a háttérkonzolban nincs hiba vagy manifest-figyelmeztetés (ha van, a szövegét fel kell jegyezni).
+- [ ] A beállítások oldalon a token megadása után a „Kapcsolat tesztelése” sikeres; a helyi elérés engedélye megvan
+      (vagy az „Engedély megadása” gombbal megadható).
+- [ ] A négy címke létrejön a megadott színekkel.
+- [ ] Egy továbbított előrendelés „AI: sorban”, majd „AI: kész” / „AI: ellenőrzendő” címkét kap, és a CSV-ben
+      megjelennek a sorai.
+- [ ] Más tárgyú levél nem kap címkét.
+- [ ] Helyi menü: „Küldés AI feldolgozásra > Előrendelés feldolgozás” működik tetszőleges levélre.
+- [ ] Leállított exe mellett érkező levél a kimenő sorba kerül, és az exe újraindítása után beküldődik.
+- [ ] Thunderbird újraindítása után a visszamenőleges keresés pótolja a kimaradt leveleket.
+- [ ] Egy kiválasztott további mappa (beállítások > Figyelt mappák) leveleit is figyeli.
+- [ ] Az EfMailAgent naplójában (Debug szinten) az add-on kéréseinél `Origin: moz-extension://…` látszik (D-303).

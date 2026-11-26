@@ -5,8 +5,8 @@
 | 1 | Scaffold, configuration, rule loading | **done** |
 | 2 | Core pipeline (queue, worker, LLM, validation, CSV) | **done** |
 | 3 | HTTP API | **done** |
-| 4 | Thunderbird add-on | next |
-| 5 | Add-on installation from the exe | |
+| 4 | Thunderbird add-on | **done** |
+| 5 | Add-on installation from the exe | next |
 | 6 | Admin UI | |
 | 7 | Windows Service and installer | |
 | 8 | End-to-end test, hardening, user guide | |
@@ -135,3 +135,39 @@
 ### Notes for the next step
 - Decisions D-301..D-309. The add-on needs: token header, `moz-extension` origin, `priority` in matchers,
   Message-ID with or without brackets, `to` as array.
+
+---
+
+## Step 4: Thunderbird add-on (done, 2026-11-26)
+
+### What exists
+- `addon/manifest.json`: MV3, id `efmailagent@energofish.hu`, `strict_min_version` 128.0 (D-401), minimal
+  permissions, `host_permissions` for `http://127.0.0.1/*`, Hungarian name/description, SVG icon, options page.
+- `addon/src/core/` (pure logic, no direct `messenger.*`): `normalize.js` (twin of the C# normalizer), `htmlToText.js`,
+  `backoff.js`, `tags.js`, `payload.js`, `config.js` (storage.managed first, then options), `api.js`, `agent.js`
+  (new mail, matchers with ETag, submission, outbox, polling, tags, backfill, context menu), `wiring.js`.
+- `addon/src/background.js`: event page that wires the real `messenger` into the core.
+- `addon/options/`: Hungarian options page (server URL / token read-only when managed, watched folders, backfill
+  days, on/off switch, "Kapcsolat tesztelése", host permission check, last 20 submissions, manual rescan).
+- `addon/test/`: `fake-messenger.js` (the used Thunderbird API subset, records calls), `fake-exe.js`, and 84 Node
+  tests: shared normalization vectors (100% parity with C#), demo payload = `samples/expected/demo_payload.json`,
+  tag transitions, outbox (down / 401 / cap 500 / backoff), 422, duplicates, watched folders, pagination, ETag,
+  rules version change, pending match, backfill, context menu, managed config, manifest checks.
+- `scripts/package-addon.mjs` -> `dist/efmailagent.xpi`; `build.ps1` (tests, XPI, single-file exe into `dist/`).
+- `scripts/simulate-thunderbird.mjs`, `scripts/e2e-sim.sh`, `scripts/e2e-sim.ps1`: DEV_MODE section 4 end-to-end run.
+- `docs/TESTING.md`: automatic tests and the manual Thunderbird test (temporary loading, background console, checks).
+- CI: Node tests, XPI packaging and the e2e simulation on Linux; `build.ps1` + e2e simulation + smoke tests on Windows;
+  artifacts `EfMailAgent.exe` and `efmailagent.xpi`.
+
+### Verification
+- `dotnet test`: 205 passed. `node --test "test/*.test.js"` (addon): **84 passed**.
+- `bash scripts/e2e-sim.sh`: **E2E SZIMULÁCIÓ SIKERES** in ~8 s: payload equals `demo_payload.json`, tag
+  "AI: sorban" -> "AI: ellenőrzendő", CSV equals the expected fixture (BOM, `;`, CRLF, quoted cell), the
+  non-matching email is not submitted, the second submission of the demo email returns `200` with the same job id
+  and no duplicate rows.
+- XPI: 16 files, `manifest.json` at the root, valid zip (checked with Python's zipfile).
+- Real Thunderbird was not available: the on-site checks are in `docs/WINDOWS_ACCEPTANCE.md` and `docs/TESTING.md`.
+
+### Notes for the next step
+- Decisions D-401..D-411. Step 5 must write `policies.ExtensionSettings` and `policies["3rdparty"].Extensions` with
+  `serverUrl` and `token`, which `config.js` reads via `storage.managed`.

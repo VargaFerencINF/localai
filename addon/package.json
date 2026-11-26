@@ -1,0 +1,9 @@
+{
+  "name": "efmailagent-addon",
+  "private": true,
+  "description": "Development-only file (ES module mode for the Node tests). Not part of the XPI.",
+  "type": "module",
+  "scripts": {
+    "test": "node --test \"test/*.test.js\""
+  }
+}

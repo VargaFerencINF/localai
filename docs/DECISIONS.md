@@ -299,5 +299,87 @@ the same) and `scripts/dev-submit.mjs` (Node, for the Linux sandbox and CI). Bot
 folder's `appsettings.json`, submit an `.eml` (headers parsed) or `.txt` (metadata from `samples/emails/index.json`),
 and wait for the job to finish.
 
+## Step 4
+
+### D-401 Thunderbird version and strict_min_version
+Step 4 asks to ask the owner for the installed Thunderbird version; per D-001 the decision was taken here. The
+official docs (https://webextension-api.thunderbird.net, read on 2026-11-26) document MV3 for the current release
+(161) and the newest ESR (153); 128 ESR is the first release with official MV3 support (migration guide). Every API
+the add-on relies on exists since **128**, except `messengerUtilities.convertToPlainText` (140), which is used only
+when present (own HTML-to-text fallback otherwise). Therefore `strict_min_version` is **`128.0`**: the add-on works on
+128 ESR, 140 ESR and 153 ESR. If the server runs something older than 128, MV3 is not available and the add-on will
+not install; the version must be confirmed on site (docs/WINDOWS_ACCEPTANCE.md).
+
+### D-402 API choices (verified against the ESR 153 MV3 docs)
+
+| Purpose | API | Since | Permission |
+|---|---|---|---|
+| New mail | `messages.onNewMailReceived(folder, MessageList)`, default monitoring (inbox and normal folders); folder filter in the add-on | 78 (monitorAllFolders 128, not used) | accountsRead, messagesRead |
+| Body | `messages.listInlineTextParts(id)` -> `[{contentType, content}]`; fallback `messages.getFull` tree walk | 128 | messagesRead |
+| HTML -> text | `messengerUtilities.convertToPlainText(html)` if available, else own converter | 140 | - |
+| Attachment names | `messages.listAttachments(id)` (`name`) | 91 | messagesRead |
+| Tags | `messages.tags.list()` / `messages.tags.create(key, tag, color)` | 128 | messagesTagsList / messagesTags |
+| Set tags | `messages.update(id, { tags })` | 68 | messagesUpdate |
+| Backfill | `messages.query({ folderId, fromDate })` + `messages.continueList(id)` | 128 (folderId) | messagesRead, accountsRead |
+| Folders | `folders.query({ specialUse: ['inbox'] })`, `folders.get(id)`; inbox = `specialUse` contains `"inbox"` | 128 | accountsRead |
+| Context menu | `menus.create({ id, parentId, contexts: ['message_list'] })`, `menus.onClicked` (`info.selectedMessages` is a MessageList) | 68 | menus (+ messagesRead) |
+| Config | `storage.managed.get` (read-only, from the policy), `storage.local` | 60 | storage |
+| Timers | `alarms.create(name, { periodInMinutes })`, `alarms.onAlarm` | 60 | alarms |
+
+Every MessageList is consumed page by page with `continueList`. Not verified from the Thunderbird pages (they were
+not part of the docs read) and taken from Gecko/Firefox MV3 semantics: `background.scripts` with `type: module` is a
+non-persistent event page, `host_permissions` for `http://127.0.0.1/*`, `browser_specific_settings.gecko`. These are
+on the on-site checklist.
+
+### D-403 No managed_schema in the manifest
+The Thunderbird storage docs state that enforcement of extension-provided managed storage schemas is not supported
+(the key is Chromium's). The manifest therefore does not declare `storage.managed_schema` (it would only produce a
+manifest warning). `addon/managed_schema.json` documents the two keys (`serverUrl`, `token`) the policy provides.
+
+### D-404 Tags
+Fixed keys `efai_sorban`, `efai_kesz`, `efai_ellenorzendo`, `efai_hiba` with the labels from CLAUDE.md and distinct
+colors (blue, green, amber, red). A tag that already has the same label (e.g. created by hand) is reused with its
+key. Setting a status replaces any AI tag and keeps all other tags of the message.
+
+### D-405 Event page state
+All state lives in `storage.local` (`matchers`, `openJobs`, `outbox`, `history`, `tagKeys`, `pendingMatch`,
+`options`); handlers within one page instance are serialized with a promise chain so read-modify-write sequences do
+not interleave. Alarms: `efmailagent-poll` every minute (rules version check via `/api/health`, outbox, open jobs),
+`efmailagent-matchers` every 15 minutes. Both are recreated on every startup.
+
+### D-406 Outbox rules
+- Network error, timeout, `401` and `5xx`: the payload goes to the outbox (never dropped, no tag). Retry delays
+  1, 2, 5, 10, 30, 60 minutes (capped). A wrong token therefore heals itself once the token is fixed.
+- `400` / `422`: a permanent answer from the exe; nothing is retried (422 = no rule matches according to the exe).
+- Cap 500: when full, a new message is **not** added (warning in the console). It stays untagged, so the startup
+  backfill picks it up later; nothing already queued is thrown away.
+
+### D-407 Mail before the first matcher download
+If the matchers were never downloaded (first start while the exe is down), new mail ids are remembered
+(`pendingMatch`, max 500) and checked as soon as the matchers arrive. Afterwards the cached matchers are used while
+the exe is unreachable.
+
+### D-408 Payload details
+`messageId` is sent in canonical `<...>` form; `to` is the recipients array (accepted by the exe, D-304);
+`account` is the Thunderbird account id, `folder` the folder path; `receivedAt` is the message date in ISO UTC;
+`bodyHtml` is sent only when there is no plain text part (then `bodyText` is the converted HTML); `ruleId` only for
+manual submissions. The exact JSON for the demo email is `samples/expected/demo_payload.json`.
+
+### D-409 Context menu
+"Küldés AI feldolgozásra" with one sub-item per enabled rule (rebuilt whenever the matchers change; a disabled
+placeholder item when there are none). A message already known to the exe returns its existing job (dedup by
+Message-ID), also for a manual submission with another rule; re-processing is done with the retry endpoint / admin UI.
+
+### D-410 Shared wiring and packaging
+`addon/src/core/wiring.js` registers the handlers for both the real background page and the tests / e2e
+simulation. `scripts/package-addon.mjs` builds a deterministic XPI (manifest first at the zip root, UTF-8 names,
+fixed timestamps; tests, `package.json` and Markdown excluded) and refuses to build when the manifest version differs
+from `VERSION`. `build.ps1` calls it, so Linux CI and Windows produce the same XPI. Icons are a single SVG.
+`addon/package.json` only switches Node to ES modules for the tests; it is not packaged.
+
+### D-411 End-to-end simulation uses the policy path
+`scripts/simulate-thunderbird.mjs` gives the add-on its server URL and token through the fake `storage.managed`, the
+same way the policy will in production (Step 5).
+
 ## Planned for later steps (decided now, implemented later)
 

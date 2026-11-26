@@ -1,0 +1,9 @@
+{
+  "$schema": "http://json-schema.org/draft-03/schema#",
+  "description": "Documentation of the storage.managed keys the exe writes through policies.json (policies[\"3rdparty\"].Extensions[\"efmailagent@energofish.hu\"]). Thunderbird does not enforce extension-provided managed schemas, so this file is informative only (see docs/DECISIONS.md).",
+  "type": "object",
+  "properties": {
+    "serverUrl": { "type": "string", "description": "Az EfMailAgent API címe, pl. http://127.0.0.1:47811" },
+    "token": { "type": "string", "description": "Az X-EfMailAgent-Token értéke" }
+  }
+}
