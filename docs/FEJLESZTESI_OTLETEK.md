@@ -97,7 +97,10 @@ modell** a gépet.
 
 ## 4. Minden rendelés külön fájlba (alapértelmezésként)
 
-**Állapot:** ötlet · **Felvéve:** 2026-11-26
+**Állapot:** elvetve – nem kell fejleszteni · **Felvéve:** 2026-11-26
+
+> 2026-11-26: a kérés a meglévő beállítással megoldható (Beállítások › Kimenet › „Levelenként külön fájl”), ezért nem
+> fejlesztjük le.
 
 **Kérés:** minden új rendelés (levél) mindig **külön CSV fájlba** kerüljön, ne egy közös havi fájl végére.
 

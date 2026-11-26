@@ -102,10 +102,7 @@ public static partial class ResponseValidator
         }
     }
 
-    /// <summary>
-    /// ellenorzendo if an enum column named "bizonyossag" says "alacsony", a required column is empty, or a required number
-    /// column is 0 (models tend to emit cancelled items as quantity 0 instead of leaving them out).
-    /// </summary>
+    /// <summary>ellenorzendo if an enum column named "bizonyossag" says "alacsony" or a required column is empty.</summary>
     public static ExtractedRow ClassifyRow(RuleOutput output, JsonObject row, IReadOnlyList<string>? corrections = null)
     {
         var reasons = new List<string>(corrections ?? []);
@@ -114,9 +111,6 @@ public static partial class ResponseValidator
             var value = row[column.Name];
             if (column.Required && IsEmpty(value))
                 reasons.Add($"A kötelező '{column.Name}' mező üres.");
-            else if (column.Required && column.Type is ColumnType.Number or ColumnType.Integer
-                     && value is JsonValue n && n.TryGetValue<double>(out var number) && number == 0)
-                reasons.Add($"A kötelező '{column.Name}' mező értéke 0 (törölt vagy visszavont tétel?).");
 
             if (column.Type == ColumnType.Enum
                 && string.Equals(column.Name, ConfidenceColumn, StringComparison.Ordinal)

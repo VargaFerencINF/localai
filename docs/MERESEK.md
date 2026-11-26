@@ -36,11 +36,7 @@ Rövid levelek (2–6 tétel) ugyanezen a laptopon: **~2–3 perc** levelenként
 - **Cikkszám:** az `EF-…` cikkszámok a megnevezésben maradtak, a `cikkszam` oszlop üres.
 - **Múltbeli dátum:** egy korábbi levélnél (Horgász Centrum) a „március 1” 2026-03-01 lett, múltbeli dátum.
 
-**Javítás:** a 0 mennyiségű sor ezentúl automatikusan ellenőrzendő (D-1106). A minta prompt kiegészült:
-- törölt tétel ne kerüljön be;
-- cikkszám kerüljön a cikkszam oszlopba;
-- számított mennyiségnél ne kerekítsen;
-- évszám nélküli dátumnál a következő jövőbeli dátumot használja.
+Ezeket a hibákat egyelőre nem javítjuk, csak a mérés eredményeként rögzítettük.
 
 ## Becslések összevetéshez (nem mérés)
 
