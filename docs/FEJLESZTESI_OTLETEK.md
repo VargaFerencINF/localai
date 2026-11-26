@@ -138,6 +138,36 @@ fájl”, fájlnév pl. `eloreendeles_{yyyy}-{MM}-{dd}_{jobId}.csv`.
 
 ---
 
+## 6. Cikkszámok jobb felismerése (prompt / skill)
+
+**Állapot:** ötlet · **Felvéve:** 2026-11-26
+
+**Kérés:** a modell ismerje fel jobban a cikkszámokat, a betűkből és számokból álló, kódszerű azonosítókat, és
+tegye őket a `cikkszam` oszlopba.
+
+**Háttér (mérés, 2026-11-26, `qwen3.5:9b`, 50 tételes mérőlevél, lásd `docs/MERESEK.md`):**
+- a sor elején álló kódokat (pl. `EF-B3600 Feeder bot 3,6 m`) egyszer sem tette a `cikkszam` oszlopba (0/9), csak a
+  megnevezésben hagyta;
+- a zárójelben álló kódot (pl. `Horog 14-es (EF-H1044)`) viszont felismerte.
+
+**Részletek, javaslat:**
+- **Új skill fájl** az előrendelés szabályhoz (pl. `skills/cikkszamok.md`):
+  - a cikkszám formátuma (pl. `EF-` előtag, nagybetű-kötőjel-számok, esetleg más gyártók mintái);
+  - példák a különböző elhelyezésekre: sor eleje, zárójel, „cikkszám:”, „Art.-Nr.”, „kód:”;
+  - utasítás: a kód kerüljön a `cikkszam` oszlopba; a megnevezésből kikerüljön-e vagy ott is maradjon (eldöntendő).
+- **Opcionálisan a prompt kiegészítése** egy sorral a `cikkszam` mezőről.
+- **Opcionális programoldali segítség:** ha a modell üresen hagyja a `cikkszam` mezőt, de a megnevezésben egy
+  beállítható mintára (regex, pl. `EF-[A-Z]+\d+`) illeszkedő kód áll, a program maga töltse ki.
+  - Előny: modelltől független, biztos.
+  - Hátrány: szabályonként be kell állítani a mintát.
+- **Ellenőrzés:** a mérőlevél újrafuttatása; cél 9/9 cikkszám.
+
+**Megvalósíthatóság:** egyszerű.
+- A skill fájl a kezelőfelületről, kódváltoztatás nélkül is hozzáadható.
+- A programoldali kitöltés kis fejlesztés.
+
+---
+
 ## Korábbról (lásd `docs/PROGRESS.md`, „Ideas for v2”)
 
 - Csatolmányok feldolgozása (xlsx, pdf, docx).
