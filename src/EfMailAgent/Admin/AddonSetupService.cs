@@ -47,7 +47,7 @@ public sealed class WindowsElevatedRunner : IElevatedRunner
         var process = Environment.ProcessPath ?? "EfMailAgent.exe";
         var name = Path.GetFileNameWithoutExtension(process);
         if (name.Equals("dotnet", StringComparison.OrdinalIgnoreCase))
-            return (process, [typeof(AddonSetupService).Assembly.Location]);
+            return (process, [Path.Combine(AppContext.BaseDirectory, "EfMailAgent.dll")]); // single-file safe (no Assembly.Location)
         return (process, []);
     }
 

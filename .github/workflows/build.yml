@@ -41,6 +41,8 @@ jobs:
         env:
           EFMAILAGENT_DLL: src/EfMailAgent/bin/Release/net10.0/EfMailAgent.dll
         run: bash scripts/e2e-sim.sh
+      - name: Single-file win-x64 publish (catches single-file analyzer errors early)
+        run: dotnet publish src/EfMailAgent -c Release -r win-x64 --self-contained -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o "$RUNNER_TEMP/publish-check"
       - name: Validate sample rules with the CLI
         run: dotnet src/EfMailAgent/bin/Release/net10.0/EfMailAgent.dll validate-rules --data-dir "$RUNNER_TEMP/efdata"
       - name: API smoke test (service mode + dev-submit)
