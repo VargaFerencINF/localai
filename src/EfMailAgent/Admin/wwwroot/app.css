@@ -98,6 +98,7 @@ h3 { font-size: 1rem; margin: 18px 0 8px; }
 .stack { display: flex; flex-direction: column; gap: 14px; }
 .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .row.end { justify-content: flex-end; }
+.row > select, .row > input:not([type="checkbox"]) { width: auto; }
 .spacer { flex: 1; }
 
 /* ---- forms ---- */
@@ -147,8 +148,15 @@ th { background: var(--surface-2); font-weight: 600; font-size: 0.82rem; color: 
 tbody tr.clickable { cursor: pointer; }
 tbody tr.clickable:hover { background: var(--surface-2); }
 tbody tr:last-child td { border-bottom: none; }
-td.subject { max-width: 420px; }
-td .ellipsis { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 420px; }
+td .ellipsis { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+/* Job list: fixed layout so subject and sender shrink instead of pushing the last columns out of view. */
+table.jobs { table-layout: fixed; min-width: 860px; }
+table.jobs col.c-date { width: 172px; }
+table.jobs col.c-status { width: 150px; }
+table.jobs col.c-rule { width: 120px; }
+table.jobs col.c-sender { width: 26%; }
+table.jobs col.c-rows { width: 64px; }
+table.jobs col.c-time { width: 72px; }
 td.num { text-align: right; font-variant-numeric: tabular-nums; }
 td.nowrap, th.nowrap { white-space: nowrap; }
 .stack > *, .split > *, .split-test > * { min-width: 0; }

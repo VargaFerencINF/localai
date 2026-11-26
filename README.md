@@ -85,6 +85,7 @@ dotnet publish src/EfMailAgent -c Release -r win-x64 --self-contained -p:Publish
 dotnet test                                # xUnit
 cd addon && node --test "test/*.test.js"  # add-on, with a fake messenger API and a fake exe
 bash scripts/e2e-sim.sh                    # exe + simulated Thunderbird + mock LLM (Windows: scripts\e2e-sim.ps1)
+node scripts/ui-test.mjs                   # admin UI usability test in Chromium (needs Playwright; --url/--token for a running service)
 ```
 
 ## Run locally (development)
@@ -104,10 +105,13 @@ Useful commands: `validate-rules`, `test-rule <rule> <email file>`, `benchmark <
 ## Release
 
 1. `node scripts/set-version.mjs x.y.z` (updates `VERSION` and `addon/manifest.json` together).
-2. Update `docs/PROGRESS.md`, commit, tag `vx.y.z`, push.
+2. Add a `## x.y.z` section to `docs/RELEASE_NOTES.md`, update `docs/PROGRESS.md`, commit and push to the default
+   branch.
 3. The GitHub Actions workflow (`.github/workflows/build.yml`) builds and tests on Linux and Windows, runs the
-   simulation and the exe smoke tests, installs / upgrades / uninstalls the installer silently, and uploads
-   `EfMailAgent.exe`, `efmailagent.xpi` and `EfMailAgent-Setup.exe` as artifacts.
+   simulation, the exe smoke tests and the admin UI test, installs the setup with parameters into a machine with a
+   (fake) Thunderbird, runs the UI test against the installed service, upgrades and uninstalls. When everything is
+   green and `vx.y.z` does not exist yet, the `release` job creates the tag and the GitHub Release with
+   `EfMailAgent-Setup.exe`, `EfMailAgent.exe`, `efmailagent.xpi` and `SHA256SUMS.txt`.
 4. Verify on the target server with `docs/WINDOWS_ACCEPTANCE.md`.
 
 Upgrades keep `C:\ProgramData\EfMailAgent` (settings, token, rules, queue, output) untouched.

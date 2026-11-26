@@ -112,11 +112,12 @@ function codeBlock(title, text, open = false) {
 // ---------- login ----------
 
 function showLogin() {
+  stopTimers();
+  hasUnsavedChanges = () => false;
   $('app').hidden = true;
   closeDrawer();
   $('login').hidden = false;
   $('login-token').focus();
-  stopTimers();
 }
 
 async function showApp() {
@@ -138,6 +139,8 @@ $('login-form').addEventListener('submit', async (event) => {
 });
 
 $('logout').addEventListener('click', async () => {
+  if (!confirmLeave()) return;
+  hasUnsavedChanges = () => false;
   await api('POST', '/logout').catch(() => {});
   showLogin();
 });
@@ -145,15 +148,32 @@ $('logout').addEventListener('click', async () => {
 // ---------- router ----------
 
 const PAGES = { attekintes: renderOverview, szabalyok: renderRules, tesztkonzol: renderTestConsole, beallitasok: renderSettings, naplo: renderLogs };
+const UNSAVED = 'A módosítások nincsenek mentve. Biztosan továbblépsz?';
 let timers = [];
+let cleanups = [];
+/** Set by a page with an editor; navigation away asks before unsaved changes are lost. */
+let hasUnsavedChanges = () => false;
 
 function stopTimers() {
   timers.forEach(clearInterval);
   timers = [];
+  cleanups.forEach((fn) => fn());
+  cleanups = [];
+}
+
+/** Registers a document event listener that is removed when the page is left. */
+function onPageEvent(type, handler) {
+  document.addEventListener(type, handler);
+  cleanups.push(() => document.removeEventListener(type, handler));
+}
+
+function confirmLeave() {
+  return !hasUnsavedChanges() || confirm(UNSAVED);
 }
 
 function route() {
   stopTimers();
+  hasUnsavedChanges = () => false;
   const [name, ...rest] = (location.hash.replace(/^#\/?/, '').split('?')[0] || 'attekintes').split('/');
   const page = PAGES[name] ? name : 'attekintes';
   for (const link of document.querySelectorAll('.sidebar nav a')) link.classList.toggle('active', link.dataset.page === page);
@@ -165,7 +185,14 @@ function route() {
   container.focus({ preventScroll: true });
 }
 
-window.addEventListener('hashchange', route);
+window.addEventListener('hashchange', (event) => {
+  if (!confirmLeave()) {
+    history.replaceState(null, '', event.oldURL); // stay on the page, keep the edits
+    return;
+  }
+  route();
+});
+window.addEventListener('beforeunload', (event) => { if (hasUnsavedChanges()) event.preventDefault(); });
 
 // ---------- Áttekintés ----------
 
@@ -206,7 +233,10 @@ async function renderOverview(container, args) {
       statCard('Ellenőrzendő', (overview.counts.needs_review ?? 0) > 0 ? 'warn' : 'ok', `${overview.counts.needs_review ?? 0} feladat`,
         el('a', { href: '#/attekintes?allapot=needs_review', onclick: () => { filter = 'needs_review'; } }, 'Ellenőrzendők megnyitása')));
     drawChips(overview.counts);
+    // Keep the keyboard focus on the same job when the list is redrawn (auto refresh every 10 s).
+    const focusedId = document.activeElement?.closest?.('#page tr[data-id]')?.dataset.id;
     drawJobs(jobs);
+    if (focusedId) table.querySelector(`tr[data-id="${CSS.escape(focusedId)}"]`)?.focus({ preventScroll: true });
   }
 
   function drawJobs(jobs) {
@@ -215,18 +245,28 @@ async function renderOverview(container, args) {
       table.append(el('div', { class: 'card empty', text: filter ? 'Nincs ilyen állapotú feladat.' : 'Még nem érkezett feladat.' }));
       return;
     }
-    table.append(el('div', { class: 'table-wrap' }, el('table', {},
+    table.append(el('div', { class: 'table-wrap' }, el('table', { class: 'jobs' },
+      el('colgroup', {}, ['c-date', 'c-status', 'c-rule', 'c-subject', 'c-sender', 'c-rows', 'c-time'].map((c) => el('col', { class: c }))),
       el('thead', {}, el('tr', {}, ...['Érkezett', 'Állapot', 'Szabály', 'Tárgy', 'Feladó', 'Sorok', 'Idő'].map((h) => el('th', { text: h })))),
-      el('tbody', {}, jobs.map((job) => el('tr', { class: 'clickable', tabindex: 0, onclick: () => openJob(job.id), onkeydown: (e) => { if (e.key === 'Enter') openJob(job.id); } },
+      el('tbody', {}, jobs.map((job) => el('tr', { class: 'clickable', tabindex: 0, dataset: { id: job.id }, onclick: () => openJob(job.id), onkeydown: (e) => {
+        // preventDefault: otherwise the same Enter would also press the panel's close button, which gets the focus.
+        if (e.key === 'Enter') { e.preventDefault(); openJob(job.id); }
+      } },
         el('td', { class: 'nowrap', text: formatDate(job.createdAt) }),
         el('td', {}, badge(job.status), job.attempts > 1 ? el('span', { class: 'small muted', text: ` ${job.attempts}. kísérlet` }) : null),
-        el('td', { text: job.ruleId }),
+        el('td', {}, el('span', { class: 'ellipsis', title: job.ruleId, text: job.ruleId })),
         el('td', { class: 'subject' }, el('span', { class: 'ellipsis', title: job.subject ?? '', text: job.subject ?? '' }), job.error ? el('span', { class: 'small muted ellipsis', text: job.error }) : null),
-        el('td', {}, el('span', { class: 'ellipsis', text: job.sender ?? '' })),
+        el('td', {}, el('span', { class: 'ellipsis', title: job.sender ?? '', text: job.sender ?? '' })),
         el('td', { class: 'num', text: job.rowCount ?? '–' }),
         el('td', { class: 'num nowrap', text: job.durationMs ? `${(job.durationMs / 1000).toFixed(1)} s` : '–' })))))));
   }
 
+  // After the job panel closes (possibly after a retry) the list is refreshed at once and the row gets the focus back.
+  onPageEvent('efm:drawer-closed', async (event) => {
+    await refresh().catch(() => {});
+    const active = document.activeElement;
+    if (!active || active === document.body || !active.isConnected) table.querySelector(`tr[data-id="${CSS.escape(event.detail.id)}"]`)?.focus();
+  });
   await refresh();
   timers.push(setInterval(() => refresh().catch(() => {}), 10_000));
 }
@@ -250,9 +290,17 @@ function addonDetail(addon) {
 
 // ---------- job drawer ----------
 
+let drawerJobId = null;
+let drawerOpener = null;
+
 function closeDrawer() {
+  if ($('drawer').hidden) return;
   $('drawer').hidden = true;
   $('drawer-backdrop').hidden = true;
+  if (drawerOpener?.isConnected) drawerOpener.focus();
+  drawerOpener = null;
+  if (drawerJobId) document.dispatchEvent(new CustomEvent('efm:drawer-closed', { detail: { id: drawerJobId } }));
+  drawerJobId = null;
 }
 
 $('drawer-close').addEventListener('click', closeDrawer);
@@ -263,8 +311,11 @@ async function openJob(id) {
   const body = $('drawer-body');
   body.textContent = '';
   body.append(el('div', { class: 'row' }, el('span', { class: 'spinner' }), 'Betöltés…'));
+  if ($('drawer').hidden) drawerOpener = document.activeElement;
+  drawerJobId = id;
   $('drawer').hidden = false;
   $('drawer-backdrop').hidden = false;
+  $('drawer-close').focus();
   const job = await api('GET', `/jobs/${encodeURIComponent(id)}`);
   $('drawer-title').textContent = job.subject || 'Feladat';
   body.textContent = '';
@@ -307,6 +358,7 @@ async function renderRules(container, args) {
   let selected = args[0] ?? rules.find((r) => !r.isBase)?.folder ?? rules[0]?.folder;
   let currentFile = null;
   let dirty = false;
+  hasUnsavedChanges = () => dirty;
 
   const list = el('div', { class: 'rule-list' });
   const editor = el('div', { class: 'card' });
@@ -332,9 +384,10 @@ async function renderRules(container, args) {
           await reload();
         } }));
       const state = rule.isBase ? null : !rule.valid ? badge('invalid', { invalid: 'hibás' }) : !rule.enabled ? badge('disabled', { disabled: 'kikapcsolva' }) : null;
-      list.append(el('div', { class: `rule-item ${rule.folder === selected ? 'active' : ''}`, tabindex: 0, onclick: () => select(rule.folder), onkeydown: (e) => { if (e.key === 'Enter') select(rule.folder); } },
-        el('div', { class: 'title' }, el('strong', { text: rule.name ?? rule.folder }), el('span', { class: 'small muted', text: rule.isBase ? 'minden szabály elé kerül' : `${rule.folder}${rule.priority !== null ? ` · prioritás ${rule.priority}` : ''}` })),
-        state, toggle));
+      list.append(el('div', { class: `rule-item ${rule.folder === selected ? 'active' : ''}`, tabindex: 0, onclick: () => select(rule.folder), onkeydown: (e) => { if (e.key === 'Enter') { e.preventDefault(); select(rule.folder); } } },
+        el('div', { class: 'title' }, el('strong', { title: rule.name ?? rule.folder, text: rule.name ?? rule.folder }),
+          el('span', { class: 'small muted', text: rule.isBase ? 'minden szabály elé kerül' : `${rule.folder}${rule.priority !== null ? ` · prioritás ${rule.priority}` : ''} ` }), state),
+        toggle));
     }
   }
 
@@ -344,7 +397,7 @@ async function renderRules(container, args) {
   }
 
   function select(folder) {
-    if (dirty && !confirm('A módosítások nincsenek mentve. Biztosan továbblépsz?')) return;
+    if (dirty && !confirm(UNSAVED)) return;
     selected = folder;
     currentFile = null;
     dirty = false;
@@ -363,7 +416,7 @@ async function renderRules(container, args) {
     currentFile ??= rule.files[0]?.path ?? (rule.isBase ? 'system.md' : 'rule.yaml');
 
     const tabs = el('div', { class: 'tabs' }, rule.files.map((f) => el('button', { type: 'button', class: `tab ${f.path === currentFile ? 'active' : ''}`, onclick: () => {
-      if (dirty && !confirm('A módosítások nincsenek mentve. Biztosan továbblépsz?')) return;
+      if (dirty && !confirm(UNSAVED)) return;
       currentFile = f.path;
       dirty = false;
       drawEditor();
@@ -644,10 +697,10 @@ async function renderSettings(container) {
 // ---------- Napló ----------
 
 async function renderLogs(container) {
-  const level = el('select', { id: 'log-level' }, el('option', { value: 'DBG', text: 'Debug és fölötte' }), el('option', { value: 'INF', text: 'Információ és fölötte' }),
+  const level = el('select', { id: 'log-level', 'aria-label': 'Naplószint' }, el('option', { value: 'DBG', text: 'Debug és fölötte' }), el('option', { value: 'INF', text: 'Információ és fölötte' }),
     el('option', { value: 'WRN', text: 'Figyelmeztetés és hiba' }), el('option', { value: 'ERR', text: 'Csak hibák' }));
   level.value = 'INF';
-  const lines = el('select', { id: 'log-lines' }, ['100', '300', '1000'].map((n) => el('option', { value: n, text: `utolsó ${n}` })));
+  const lines = el('select', { id: 'log-lines', 'aria-label': 'Megjelenített sorok száma' }, ['100', '300', '1000'].map((n) => el('option', { value: n, text: `utolsó ${n}` })));
   lines.value = '300';
   const auto = el('input', { type: 'checkbox', id: 'log-auto' });
   const file = el('span', { class: 'muted small' });

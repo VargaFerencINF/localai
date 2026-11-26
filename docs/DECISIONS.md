@@ -625,3 +625,34 @@ are in the acceptance checklist.
 
 ### D-807 Version 1.0.0
 `VERSION` and the add-on manifest are set to 1.0.0 and the commit is tagged `v1.0.0`.
+
+## Pre-release checks (v1.0.0)
+
+### D-808 Admin UI usability test
+`scripts/ui-test.mjs` drives the admin UI in Chromium (Playwright) through the operator tasks of the user guide: login,
+first start without an AI, configuring the AI in Settings, following jobs, retry, creating the worked-example rule
+(`reklamacio`) with an invalid and a valid edit, a skill, the test console, enabling the rule and a live email ending
+up in the CSV, the log, accessibility names, dark mode, phone width and logout (39 checks). It runs locally (starts its
+own exe) and against an installed service (`--url --token`); CI runs it on Linux and on the installed Windows
+service. Problems it found and that were fixed:
+- The job list needed horizontal scrolling at 1440 px; the "Sorok" and "Idő" columns were out of view (fixed table
+  layout, subject and sender truncated with a tooltip).
+- Opening a job with Enter closed the panel again at once (the same key press reached the close button that got the
+  focus); keyboard users could not open a job.
+- The panel did not take the focus and did not give it back; the list refreshed only 10 s after a retry.
+- The 10 s auto refresh dropped the keyboard focus from the list.
+- Unsaved rule edits were lost without a question when leaving through the sidebar, the browser or logout.
+- The log filters were 650 px wide and had no accessible name; a long rule name was cut off by its badge.
+Expected refusals (401, 422) that the browser prints to the console are not counted as JavaScript errors.
+
+### D-809 Installer verification and release from CI
+The Windows CI job now installs with wizard parameters (LLM URL, model, output folder) on a runner with a Thunderbird
+registered in the registry, checks that the values reach `appsettings.json`, the files are installed, the add-on is
+force-installed through `policies.json` with the token, then runs the UI test against the installed service (the CSV
+must appear in the chosen output folder), upgrades (settings, the rule created in the UI, local prompt edits and the
+CSV stay) and uninstalls (service and policy entries gone, data and other Thunderbird policies kept).
+The sandbox's git proxy refuses tag pushes, so the release is created by a `release` job in the same workflow: on a
+push to the default branch, after the Linux and Windows jobs are green, if `v<VERSION>` does not exist yet, it creates
+the tag and the GitHub Release with the setup, the exe, the XPI, `SHA256SUMS.txt` and the notes from
+`docs/RELEASE_NOTES.md`.
+

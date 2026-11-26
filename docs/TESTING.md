@@ -7,6 +7,7 @@
 | C# tesztek | `dotnet test` |
 | Add-on tesztek (Node 20+) | `cd addon` majd `node --test "test/*.test.js"` |
 | Végponttól végpontig szimuláció (exe + szimulált Thunderbird, mock AI) | Linux: `bash scripts/e2e-sim.sh`, Windows: `.\scripts\e2e-sim.ps1` |
+| Admin felület használati teszt (böngészőben, Playwright) | `node scripts/ui-test.mjs` (saját példányt indít), vagy futó / telepített szolgáltatáson: `node scripts/ui-test.mjs --url http://127.0.0.1:47811 --token <token>`; képernyőképek: `dist/ui-test` |
 | Teljes build (tesztek, XPI, exe) | `.\build.ps1` (eredmény: `dist\EfMailAgent.exe`, `dist\efmailagent.xpi`) |
 
 ## Thunderbird add-on kézi tesztje

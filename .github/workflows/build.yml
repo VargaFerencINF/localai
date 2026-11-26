@@ -58,6 +58,19 @@ jobs:
           kill $PID
           wait $PID || true
           cat "$RUNNER_TEMP/efapi.log"
+      - name: Install Playwright (Chromium) for the UI test
+        run: |
+          npm install --no-audit --no-fund --prefix "$RUNNER_TEMP/pw" playwright@1.63.0
+          node "$RUNNER_TEMP/pw/node_modules/playwright/cli.js" install --with-deps chromium
+      - name: Admin UI usability test (scripts/ui-test.mjs)
+        env:
+          NODE_PATH: ${{ runner.temp }}/pw/node_modules
+        run: node scripts/ui-test.mjs --exe "dotnet src/EfMailAgent/bin/Release/net10.0/EfMailAgent.dll" --out "$RUNNER_TEMP/ui-test"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ui-test-linux
+          path: ${{ runner.temp }}/ui-test
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -172,16 +185,94 @@ jobs:
           if ($p.policies.ExtensionSettings -or $p.policies.'3rdparty'.Extensions.'efmailagent@energofish.hu') { throw "our entries were not removed" }
           if ($p.policies.DisableAppUpdate -ne $true -or $p.policies.'3rdparty'.Extensions.'other@x'.a -ne 1) { throw "uninstall removed unrelated keys" }
           Write-Host "Add-on installation smoke test OK"
-      - name: Installer - silent install, upgrade to a higher version, uninstall
+      - name: Installer - first install with wizard parameters on a machine with Thunderbird
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           $data = 'C:\ProgramData\EfMailAgent'
           $app = "$env:ProgramFiles\EfMailAgent"
-          function Install($setup, $log) {
-            $p = Start-Process $setup -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', "/LOG=$log" -Wait -PassThru
-            if ($p.ExitCode -ne 0) { Get-Content $log -Tail 60; throw "setup exit code $($p.ExitCode)" }
+          $version = (Get-Content VERSION -Raw).Trim()
+
+          # A Thunderbird the installer can find the same way as on the server: registry key + install folder.
+          $tb = 'C:\FakeThunderbird'
+          New-Item -ItemType Directory -Force "$tb\distribution" | Out-Null
+          New-Item -ItemType File -Force "$tb\thunderbird.exe" | Out-Null
+          Set-Content "$tb\application.ini" "[App]`nName=Thunderbird`nVersion=140.5.0esr"
+          Set-Content "$tb\distribution\policies.json" '{ "policies": { "DisableAppUpdate": true } }'
+          $key = 'HKLM:\SOFTWARE\Mozilla\Mozilla Thunderbird\140.5.0esr (x64 hu)\Main'
+          New-Item -Path $key -Force | Out-Null
+          New-ItemProperty -Path $key -Name 'Install Directory' -Value $tb -PropertyType String -Force | Out-Null
+
+          $log = "$env:RUNNER_TEMP\setup-install.log"
+          $p = Start-Process (Resolve-Path dist/EfMailAgent-Setup.exe) -Wait -PassThru -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', "/LOG=$log",
+            '/LLMURL=http://127.0.0.1:11500', '/LLMMODEL=qwen3.5:9b', '/OUTPUT=C:\efm-out'
+          if ($p.ExitCode -ne 0) { Get-Content $log -Tail 60; throw "setup exit code $($p.ExitCode)" }
+
+          # Service
+          $service = Get-Service EfMailAgent
+          if ($service.Status -ne 'Running') { throw "service status: $($service.Status)" }
+          if ($service.StartType -notin @('Automatic', 'AutomaticDelayedStart')) { throw "start type: $($service.StartType)" }
+          if (-not ((sc.exe qc EfMailAgent | Out-String) -match 'DELAYED')) { throw 'service is not delayed-auto' }
+          if (-not ((sc.exe qfailure EfMailAgent | Out-String) -match 'RESTART')) { throw 'no restart recovery action' }
+
+          # Wizard values reached appsettings.json
+          $settings = Get-Content "$data\appsettings.json" -Raw | ConvertFrom-Json
+          if ($settings.Llm.Provider -ne 'ollama') { throw "provider: $($settings.Llm.Provider)" }
+          if ($settings.Llm.BaseUrl -ne 'http://127.0.0.1:11500') { throw "base url: $($settings.Llm.BaseUrl)" }
+          if ($settings.Llm.Model -ne 'qwen3.5:9b') { throw "model: $($settings.Llm.Model)" }
+          if ($settings.Paths.Output -ne 'C:\efm-out') { throw "output: $($settings.Paths.Output)" }
+          if ($settings.Server.Token.Length -ne 43) { throw 'token missing or malformed' }
+
+          # API, admin UI, health: AI not reachable yet (nothing listens on 11500), version matches
+          $token = $settings.Server.Token
+          for ($i = 0; $i -lt 60; $i++) { try { $health = Invoke-RestMethod 'http://127.0.0.1:47811/api/health' -Headers @{ 'X-EfMailAgent-Token' = $token }; break } catch { Start-Sleep 1 } }
+          if (-not $health) { Get-ChildItem "$data\logs" | ForEach-Object { Get-Content $_.FullName -Tail 40 }; throw 'the service API did not answer' }
+          Write-Host "health: $($health | ConvertTo-Json -Compress)"
+          if ($health.version -ne $version) { throw "unexpected version $($health.version)" }
+          if ($health.llmReachable) { throw 'LLM reported reachable although nothing listens on the configured port' }
+          if ((Invoke-WebRequest 'http://127.0.0.1:47811/admin/' -UseBasicParsing).StatusCode -ne 200) { throw 'admin UI not served' }
+          try { Invoke-WebRequest 'http://127.0.0.1:47811/api/health' -UseBasicParsing | Out-Null; throw 'API answered without token' } catch { if ($_.Exception.Response.StatusCode.value__ -ne 401) { throw } }
+
+          # Installed files
+          foreach ($f in "$app\EfMailAgent.exe", "$app\USER_GUIDE_HU.md", "$app\samples\emails\index.json", "$app\samples\rules\eloreendeles\rule.yaml",
+                          "$data\rules\eloreendeles\rule.yaml", "$data\rules\_base\system.md") {
+            if (-not (Test-Path $f)) { throw "missing after install: $f" }
           }
+
+          # Thunderbird add-on installed by the setup itself (policies.json merged, token handed over, XPI in place)
+          $policies = Get-Content "$tb\distribution\policies.json" -Raw | ConvertFrom-Json
+          if ($policies.policies.DisableAppUpdate -ne $true) { throw 'an existing Thunderbird policy was lost' }
+          $entry = $policies.policies.ExtensionSettings.'efmailagent@energofish.hu'
+          if ($entry.installation_mode -ne 'force_installed') { throw "add-on not force-installed: $($entry | ConvertTo-Json -Compress)" }
+          $xpi = [Uri]::new($entry.install_url).LocalPath
+          if (-not (Test-Path $xpi) -or -not $xpi.StartsWith("$data\addon")) { throw "XPI not found: $xpi" }
+          if ($policies.policies.'3rdparty'.Extensions.'efmailagent@energofish.hu'.token -ne $token) { throw 'the add-on did not get the token' }
+          & "$app\EfMailAgent.exe" addon-status
+          if ($LASTEXITCODE -ne 0) { throw "addon-status: $LASTEXITCODE" }
+          Write-Host 'First install OK'
+      - name: Install Playwright (Chromium) for the UI test
+        shell: pwsh
+        run: |
+          npm install --no-audit --no-fund --prefix "$env:RUNNER_TEMP\pw" playwright@1.63.0
+          node "$env:RUNNER_TEMP\pw\node_modules\playwright\cli.js" install chromium
+      - name: Admin UI usability test against the installed service
+        shell: pwsh
+        env:
+          NODE_PATH: ${{ runner.temp }}\pw\node_modules
+        run: |
+          $token = (Get-Content 'C:\ProgramData\EfMailAgent\appsettings.json' -Raw | ConvertFrom-Json).Server.Token
+          node scripts/ui-test.mjs --url http://127.0.0.1:47811 --token $token --out "$env:RUNNER_TEMP\ui-test-installed"
+          if ($LASTEXITCODE -ne 0) { Get-ChildItem 'C:\ProgramData\EfMailAgent\logs' | ForEach-Object { Get-Content $_.FullName -Tail 60 }; throw 'UI test failed' }
+          $csv = Get-ChildItem 'C:\efm-out' -Filter 'reklamacio_*.csv'
+          if (-not $csv) { throw 'the CSV was not written to the output folder chosen in the installer' }
+          Write-Host "CSV in the chosen output folder: $($csv.FullName)"
+      - name: Installer - upgrade to a higher version, uninstall
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $data = 'C:\ProgramData\EfMailAgent'
+          $app = "$env:ProgramFiles\EfMailAgent"
+          $tb = 'C:\FakeThunderbird'
           function Wait-Health() {
             $token = (Get-Content "$data\appsettings.json" -Raw | ConvertFrom-Json).Server.Token
             for ($i = 0; $i -lt 60; $i++) {
@@ -191,55 +282,55 @@ jobs:
             throw 'the service API did not answer'
           }
 
-          # 1. First install (silent: LocalSystem, Ollama at the default URL, no model)
-          Install (Resolve-Path dist/EfMailAgent-Setup.exe) "$env:RUNNER_TEMP\setup-install.log"
-          $service = Get-Service EfMailAgent
-          if ($service.Status -ne 'Running') { throw "service status: $($service.Status)" }
-          if ($service.StartType -notin @('Automatic', 'AutomaticDelayedStart')) { throw "start type: $($service.StartType)" }
-          sc.exe qc EfMailAgent | Out-String | Write-Host
-          if (-not ((sc.exe qc EfMailAgent | Out-String) -match 'DELAYED')) { throw 'service is not delayed-auto' }
-          if (-not ((sc.exe qfailure EfMailAgent | Out-String) -match 'RESTART')) { throw 'no restart recovery action' }
-          $health = Wait-Health
-          Write-Host "health: $($health | ConvertTo-Json -Compress)"
-          if ($health.version -ne (Get-Content VERSION -Raw).Trim()) { throw "unexpected version $($health.version)" }
-          if ((Invoke-WebRequest 'http://127.0.0.1:47811/admin/' -UseBasicParsing).StatusCode -ne 200) { throw 'admin UI not served' }
-          if (-not (Test-Path "$data\rules\eloreendeles\rule.yaml")) { throw 'sample rules were not copied' }
-          $settings = Get-Content "$data\appsettings.json" -Raw | ConvertFrom-Json
-          if ($settings.Llm.Provider -ne 'ollama' -or $settings.Server.Token.Length -ne 43) { throw 'unexpected appsettings.json' }
-
-          # 2. Local changes that an upgrade must keep
-          $token = $settings.Server.Token
+          # State the upgrade must keep: settings changed in the UI, the rule created in the UI, local prompt edit, output
+          $before = Get-Content "$data\appsettings.json" -Raw | ConvertFrom-Json
           Add-Content "$data\rules\eloreendeles\prompt.md" "`n- Helyi módosítás, frissítéskor meg kell maradnia."
-          Set-Content "$data\output\meglevo.csv" 'meglevo'
           $promptBefore = Get-Content "$data\rules\eloreendeles\prompt.md" -Raw
+          $reklamacioBefore = Get-Content "$data\rules\reklamacio\rule.yaml" -Raw
 
-          # 3. Upgrade with a higher version (same binaries, installer version 99.0.0)
+          # Upgrade with a higher version (same binaries, installer version 99.0.0)
           $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
           New-Item -ItemType Directory -Force "$env:RUNNER_TEMP\upgrade" | Out-Null
           Copy-Item dist\EfMailAgent.exe, dist\efmailagent.xpi "$env:RUNNER_TEMP\upgrade"
           & $iscc /Q /DAppVersion=99.0.0 "/DDistDir=$env:RUNNER_TEMP\upgrade" "/DRepoDir=$PWD" installer\EfMailAgent.iss
           if ($LASTEXITCODE -ne 0) { throw 'iscc (upgrade build) failed' }
-          Install "$env:RUNNER_TEMP\upgrade\EfMailAgent-Setup.exe" "$env:RUNNER_TEMP\setup-upgrade.log"
+          $log = "$env:RUNNER_TEMP\setup-upgrade.log"
+          $p = Start-Process "$env:RUNNER_TEMP\upgrade\EfMailAgent-Setup.exe" -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', "/LOG=$log" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { Get-Content $log -Tail 60; throw "upgrade exit code $($p.ExitCode)" }
           if ((Get-Service EfMailAgent).Status -ne 'Running') { throw 'service not running after upgrade' }
           Wait-Health | Out-Null
-          if ((Get-Content "$data\appsettings.json" -Raw | ConvertFrom-Json).Server.Token -ne $token) { throw 'token changed on upgrade' }
+          $after = Get-Content "$data\appsettings.json" -Raw | ConvertFrom-Json
+          if ($after.Server.Token -ne $before.Server.Token) { throw 'token changed on upgrade' }
+          if ($after.Llm.Provider -ne $before.Llm.Provider -or $after.Paths.Output -ne $before.Paths.Output) { throw 'settings were reset on upgrade' }
           if ((Get-Content "$data\rules\eloreendeles\prompt.md" -Raw) -ne $promptBefore) { throw 'rules were overwritten on upgrade' }
-          if (-not (Test-Path "$data\output\meglevo.csv")) { throw 'output was touched on upgrade' }
+          if ((Get-Content "$data\rules\reklamacio\rule.yaml" -Raw) -ne $reklamacioBefore) { throw 'the rule created in the UI changed on upgrade' }
+          if (-not (Get-ChildItem 'C:\efm-out' -Filter 'reklamacio_*.csv')) { throw 'output was touched on upgrade' }
           $version = (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{7E3C6A52-9C1B-4F4B-9E0A-3B5D2C8F1A71}_is1').DisplayVersion
           if ($version -ne '99.0.0') { throw "installed version after upgrade: $version" }
+          $entry = (Get-Content "$tb\distribution\policies.json" -Raw | ConvertFrom-Json).policies.ExtensionSettings.'efmailagent@energofish.hu'
+          if (-not $entry) { throw 'the add-on policy entry disappeared on upgrade' }
 
-          # 4. Uninstall (silent: data is kept)
+          # Uninstall (silent: data is kept, the add-on entry is removed, other Thunderbird policies stay)
           $p = Start-Process "$app\unins000.exe" -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART' -Wait -PassThru
           for ($i = 0; $i -lt 60 -and (Test-Path "$app\EfMailAgent.exe"); $i++) { Start-Sleep 1 }
           if (Get-Service EfMailAgent -ErrorAction SilentlyContinue) { throw 'service still exists after uninstall' }
           if (Test-Path "$app\EfMailAgent.exe") { throw 'program files still present' }
           if (-not (Test-Path "$data\appsettings.json")) { throw 'data folder was deleted although the default is to keep it' }
+          if (-not (Test-Path "$data\rules\reklamacio\rule.yaml")) { throw 'rules were deleted on uninstall' }
+          $policies = (Get-Content "$tb\distribution\policies.json" -Raw | ConvertFrom-Json).policies
+          if ($policies.ExtensionSettings.'efmailagent@energofish.hu' -or $policies.'3rdparty'.Extensions.'efmailagent@energofish.hu') { throw 'the add-on policy entries were not removed on uninstall' }
+          if ($policies.DisableAppUpdate -ne $true) { throw 'uninstall removed an unrelated Thunderbird policy' }
           Write-Host 'Installer test OK'
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: installer-logs
           path: ${{ runner.temp }}/setup-*.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ui-test-installed
+          path: ${{ runner.temp }}/ui-test-installed
       - uses: actions/upload-artifact@v4
         with:
           name: EfMailAgent-Setup
@@ -252,3 +343,47 @@ jobs:
         with:
           name: efmailagent-xpi
           path: dist/efmailagent.xpi
+
+  # Publishes a GitHub Release for the version in VERSION once both jobs (tests, UI test, installer test) are green.
+  # Runs only for pushes to the default branch and only if the tag v<VERSION> does not exist yet.
+  release:
+    needs: [linux, windows]
+    if: github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Decide
+        id: decide
+        run: |
+          VERSION=$(tr -d ' \r\n' < VERSION)
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          if gh release view "v$VERSION" > /dev/null 2>&1 || git ls-remote --exit-code --tags origin "refs/tags/v$VERSION" > /dev/null; then
+            echo "v$VERSION already exists, nothing to release."
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/download-artifact@v4
+        if: steps.decide.outputs.publish == 'true'
+        with:
+          path: artifacts
+          pattern: '{EfMailAgent-Setup,EfMailAgent-win-x64,efmailagent-xpi}'
+          merge-multiple: true
+      - name: Create release v${{ steps.decide.outputs.version }}
+        if: steps.decide.outputs.publish == 'true'
+        run: |
+          VERSION="${{ steps.decide.outputs.version }}"
+          cd artifacts
+          ls -la
+          for f in EfMailAgent-Setup.exe EfMailAgent.exe efmailagent.xpi; do test -f "$f" || { echo "missing $f"; exit 1; }; done
+          sha256sum EfMailAgent-Setup.exe EfMailAgent.exe efmailagent.xpi > SHA256SUMS.txt
+          awk -v v="## $VERSION " 'index($0, v) == 1 { on = 1; next } on && /^## / { exit } on' ../docs/RELEASE_NOTES.md > notes.md
+          test -s notes.md || { echo "no section for $VERSION in docs/RELEASE_NOTES.md"; exit 1; }
+          gh release create "v$VERSION" EfMailAgent-Setup.exe EfMailAgent.exe efmailagent.xpi SHA256SUMS.txt \
+            --target "$GITHUB_SHA" --title "EfMailAgent $VERSION" --notes-file notes.md
+

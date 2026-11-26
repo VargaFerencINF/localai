@@ -318,6 +318,20 @@
 
 ---
 
+## Pre-release checks (2026-11-26)
+
+- Admin UI usability test `scripts/ui-test.mjs` (D-808): 39 checks; it found 6 usability problems (job list
+  overflow, Enter closing the job panel, focus handling, lost focus on auto refresh, unsaved rule edits lost on
+  navigation, oversized unlabelled log filters), all fixed. Passes locally in both modes (own exe, attached to a running
+  service), repeated runs stable.
+- Installer verification extended in Windows CI (D-809): install with wizard parameters, add-on installed into a
+  registered Thunderbird by the setup, UI test against the installed service, upgrade keeps UI-made changes,
+  uninstall removes the policy entries.
+- Release: the `release` CI job publishes `v1.0.0` with the setup, exe, XPI and checksums once everything is green
+  (`docs/RELEASE_NOTES.md`).
+
+---
+
 ## Final checklist (v1.0.0)
 
 ### Done
@@ -334,6 +348,7 @@
 - [x] Windows Service, CLI, Inno Setup installer (install, upgrade, uninstall), `build.ps1`, CI on Linux and Windows.
 - [x] Prompt-injection hardening, daily summary, benchmark, robustness tests.
 - [x] Hungarian user guide, English README.
+- [x] Admin UI usability test (browser, 39 checks) and extended installer test in CI; release from CI.
 
 ### Known limitations
 - Thunderbird must run in a logged-in session; gaps are covered only by the backfill (default 3 days).
