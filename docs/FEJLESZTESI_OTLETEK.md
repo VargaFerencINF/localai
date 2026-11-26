@@ -42,10 +42,14 @@ programot telepítjük.
 **Kérés:** a gépen már vannak régi modellek, amelyek lehet, hogy elavultak. Lehessen őket **törölni** az
 alkalmazásból, és a program próbálja megkeresni az **új verziójukat**.
 
+**Fontos (2026-11-26):** a **sima törlés önmagában is legyen elérhető**, frissítés nélkül. Ha egy régi modellt nem
+akarok lecserélni, csak törölni, akkor egy gombbal törölhessem, és a program ne erőltesse az új verzió letöltését.
+
 **Részletek, javaslat:**
 - **Letöltött modellek listája:** név, méret, letöltés dátuma, használja-e éppen a program.
-- **Törlés gomb** megerősítéssel (Ollama `DELETE /api/delete`). A program által használt modellt nem engedi törölni,
-  vagy előbb átállít egy másikra.
+- **Törlés gomb minden modell mellett**, megerősítéssel (Ollama `DELETE /api/delete`), a frissítéstől függetlenül.
+  Több modell egyszerre is kijelölhető és törölhető. A program által éppen használt modellnél figyelmeztet, és
+  felajánlja, hogy előbb átállít egy másikra.
 - **„Elavult” jelölés:** ha a modell-listában van utódja (pl. `qwen3:8b` → `qwen3.5:9b`). Mellette
   **„Frissítés az új verzióra”** gomb, amely egy lépésben:
   1. letölti az utódot;
