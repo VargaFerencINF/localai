@@ -3,7 +3,7 @@
 ## Használat
 
 1. Hozz létre egy üres mappát (pl. `C:\dev\EfMailAgent`). A **`CLAUDE.md`** a gyökérbe kerül, ezt a fájlt (`PROMPTS.md`) pedig a `docs/` mappába teszi Claude Code az indító prompt alapján. A `CLAUDE.md` a specifikáció (MIT építünk), a `PROMPTS.md` a lépésterv (MILYEN SORRENDBEN).
-2. A fejlesztőgépen legyen: **.NET 10 SDK**, **Inno Setup 6** (`iscc` a PATH-on), **Node.js 20+** (csak az add-on tesztekhez), **Thunderbird** és **Ollama** egy letöltött modellel a kézi teszthez.
+2. A fejlesztés felhős Claude Code-ban megy, lokális AI, Thunderbird és Windows nélkül. Ezt a **`DEV_MODE.md`** szabályozza (a `docs/` mappába kerül): mock AI-válaszok, demo e-mail, szimulált Thunderbird, Windows-build GitHub Actionsben. Ahol egy lépés elfogadási feltétele Ollamát, Thunderbirdöt vagy Windowst kér, ott a `DEV_MODE.md` az irányadó, a valódi gépen elvégzendő ellenőrzések pedig a `docs/WINDOWS_ACCEPTANCE.md`-be kerülnek.
 3. Indíts Claude Code-ot a mappában, és add be az indító promptot. Utána elég annyit írni: **„Jöhet a következő lépés”**, Claude Code a `docs/PROMPTS.md`-ből veszi a soron következő lépést. A lépések promptjait kézzel is bemásolhatod, ha egyet újra akarsz futtatni.
 4. Egy lépés végén Claude Code megáll. Teszteld, és csak utána jöhet a következő. Ha valami nem tetszik, ugyanabban a sessionben javíttasd, mielőtt továbblépsz.
 5. A lépések között nyugodtan használj `/clear`-t: a kontextust a `CLAUDE.md`, a `docs/PROMPTS.md` és a `docs/PROGRESS.md` hordozza.

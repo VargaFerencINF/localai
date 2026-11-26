@@ -79,6 +79,11 @@ Note: .NET 8 LTS reached end of support in November 2026, so target .NET 10.
 /samples/rules/eloreendeles/prompt.md
 /samples/rules/eloreendeles/skills/*.md
 /samples/emails/*.txt        realistic Hungarian test emails (forwarded style)
+/samples/mock-responses/<ruleId>/*.json   simulated LLM answers (see docs/DEV_MODE.md)
+/samples/expected/*.csv      expected CSV output for the demo fixtures
+/addon/test/                 Node tests incl. a fake `messenger` API
+/scripts/                    dev and end-to-end simulation scripts
+/.github/workflows/build.yml Windows build + installer in CI
 /installer/EfMailAgent.iss
 /build.ps1
 ```
@@ -123,6 +128,8 @@ output:
     - { name: cikkszam,             type: string, required: false, description: "Cikkszám, ha az e-mailben szerepel" }
     - { name: mennyiseg,            type: number, required: true,  description: "Kért mennyiség számként" }
     - { name: mennyisegi_egyseg,    type: string, required: false, description: "db, doboz, csomag, kg stb." }
+    - { name: egysegar,             type: number, required: false, description: "Egységár számként, ha szerepel az e-mailben" }
+    - { name: penznem,              type: string, required: false, description: "Pénznem ISO kóddal (HUF, EUR, RON), ha van egységár" }
     - { name: kert_szallitasi_datum, type: date,  required: false, description: "ÉÉÉÉ-HH-NN, ha szerepel" }
     - { name: megjegyzes,           type: string, required: false, description: "Minden egyéb releváns információ" }
     - { name: bizonyossag,          type: enum, values: [magas, kozepes, alacsony], required: true, description: "Mennyire biztos a sor helyessége" }
@@ -133,6 +140,7 @@ llm:                         # optional per-rule overrides of appsettings
 ```
 
 Supported column types: `string`, `number`, `integer`, `date` (ISO `yyyy-MM-dd`), `boolean`, `enum`.
+Optional columns (`required: false`) are nullable in the schema (`["string","null"]` etc.); `null` is written as an empty CSV cell.
 The exe builds the JSON Schema automatically from `columns`: `{ "type":"object", "properties": { "rows": { "type":"array", "items": { ...columns... } } }, "required":["rows"] }`.
 
 ### Prompt assembly (order matters)
@@ -178,9 +186,9 @@ Job statuses: `queued`, `processing`, `done`, `needs_review`, `failed`.
 - On startup, any job left in `processing` goes back to `queued`.
 - LLM timeout configurable (default 300 s). Max 3 attempts with backoff (30 s, 2 min, 10 min) for transport errors.
 - Response handling: parse JSON, validate against the rule's schema. On validation failure make **one repair call** that includes the validation errors and the invalid output. If still invalid: `failed`, raw response stored in DB.
-- `needs_review` if: zero rows returned, any row has `bizonyossag = alacsony` (generic rule: any enum column named `bizonyossag` with value `alacsony`), or any required field is empty. Rows are still written, with `statusz = ellenorzendo`.
+- Row status (`statusz` column): `ellenorzendo` if the row has `bizonyossag = alacsony` (generic rule: any enum column named `bizonyossag` with value `alacsony`) or any required field is empty, otherwise `ok`. Job status is `needs_review` if zero rows were returned or any row is `ellenorzendo`, otherwise `done`. All rows are written either way.
 - CSV: **UTF-8 with BOM, `;` delimiter, CRLF**, RFC 4180 quoting, configurable decimal separator (default `,`), dates ISO. Header written when the file is created.
-- Meta columns prepended to every row: `job_id; feldolgozva; email_datum; kuldo; targy; message_id; statusz`, then the rule's columns.
+- Meta columns prepended to every row: `job_id; feldolgozva; email_datum; kuldo; eredeti_kuldo; targy; message_id; statusz`, then the rule's columns. `feldolgozva` and `email_datum` use local time `yyyy-MM-dd HH:mm`; `kuldo` is the email's From header (the forwarder), `eredeti_kuldo` the detected original sender (empty if not found).
 - Append safely: write to a temp file + atomic replace, or append with exclusive lock. If the file is locked (e.g. opened in Excel), retry for up to 10 minutes, then write to `<name>_pending_<jobId>.csv` and log a warning. Never lose rows.
 
 ## 9. Thunderbird add-on behaviour
@@ -225,6 +233,15 @@ Thunderbird does not require add-on signing, so an unsigned XPI is fine. The XPI
 - Never log full email bodies at Information level; Debug only.
 - Every step ends with: tests green, `docs/PROGRESS.md` updated, a git commit, a short summary, then **stop and wait**.
 
-## 13. Out of scope for v1
+## 13. Development mode (cloud sandbox)
+
+Development happens in a Linux cloud sandbox (Claude Code on the web) where **no local LLM, no Thunderbird, no Inno Setup and no Windows** are available. **`docs/DEV_MODE.md` is binding for every step** and overrides any acceptance criterion in `docs/PROMPTS.md` that needs those tools. In short:
+
+- LLM provider `mock` returns simulated answers from `samples/mock-responses/`; the real `ollama` and `openai_compatible` clients are still implemented and tested against a fake HTTP server.
+- Thunderbird is simulated by a fake `messenger` API in Node tests and an end-to-end simulation script.
+- Windows-only code (service, registry, policies.json path, installer) sits behind interfaces with `OperatingSystem.IsWindows()` guards; it is built and smoke-tested on a Windows runner in GitHub Actions.
+- Anything that can only be verified on the real server goes into `docs/WINDOWS_ACCEPTANCE.md` as a checklist.
+
+## 14. Out of scope for v1
 
 Attachment content parsing (xlsx/pdf), direct ERP import, multi-server setup, cloud LLMs. Keep the code open for attachment parsing later (`attachmentNames` already flows through).
