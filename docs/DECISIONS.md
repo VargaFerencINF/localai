@@ -387,5 +387,11 @@ but 25 November 2026 is a Wednesday. MimeKit and JavaScript ignore the weekday, 
 it. `scripts/dev-submit.ps1` therefore strips the weekday before parsing. The expected CSV (`2026-11-25 09:41`) is
 unaffected.
 
+### D-413 Native libraries inside the single-file exe
+The first Windows CI run of `build.ps1` showed that a single-file publish leaves SQLite's native `e_sqlite3.dll`
+(and the IIS module) next to the exe; `build.ps1` copies only `EfMailAgent.exe`, so the service could not open its
+database. `IncludeNativeLibrariesForSelfExtract=true` embeds them (extracted to a temp folder at first start), so
+`EfMailAgent.exe` is really one file, which the installer (Step 7) relies on.
+
 ## Planned for later steps (decided now, implemented later)
 

@@ -5,6 +5,8 @@
     <AssemblyName>EfMailAgent</AssemblyName>
     <RootNamespace>EfMailAgent</RootNamespace>
     <InvariantGlobalization>false</InvariantGlobalization>
+    <!-- Single-file publish: also embed native libraries (SQLite's e_sqlite3.dll), so EfMailAgent.exe really is one file. -->
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
   </PropertyGroup>
 
   <ItemGroup>
