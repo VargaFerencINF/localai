@@ -74,3 +74,25 @@ Részletes lépések: `docs/TESTING.md`, „Thunderbird add-on kézi tesztje”.
 - [ ] Thunderbird újraindítása után a visszamenőleges keresés pótolja a kimaradt leveleket.
 - [ ] Egy kiválasztott további mappa (beállítások > Figyelt mappák) leveleit is figyeli.
 - [ ] Az EfMailAgent naplójában (Debug szinten) az add-on kéréseinél `Origin: moz-extension://…` látszik (D-303).
+
+## 5. lépés: add-on telepítése az exe-ből
+
+A `dist\EfMailAgent.exe` és a `dist\efmailagent.xpi` legyen egy mappában.
+
+- [ ] Rendszergazdai parancssorból: `EfMailAgent.exe install-addon` -> megtalálja a Thunderbirdöt, kiírja a verzióját,
+      és létrehozza/frissíti a `C:\Program Files\Mozilla Thunderbird\distribution\policies.json` fájlt (a régi mentése
+      `policies.json.bak-…` néven ott marad).
+- [ ] Nem rendszergazdai parancssorból ugyanez magyar hibaüzenetet ad (kilépési kód 7), és nem módosít semmit.
+- [ ] A Thunderbird újraindítása után az add-on telepítve van (Eszközök > Kiegészítők és témák), nem tiltható le és
+      nem távolítható el, és a beállításai oldalán a szerver és a token kitöltve, nem szerkeszthetően látszik
+      (a beállítások oldal megnyitása nélkül is működik).
+- [ ] `EfMailAgent.exe addon-status` -> „Állapot: RENDBEN”.
+- [ ] Új verzió: a `VERSION` emelése után újraépített exe + XPI-vel az `install-addon` (vagy a szolgáltatás
+      újraindítása) után a Thunderbird újraindításakor az új add-on verzió települ (D-502).
+- [ ] Önjavítás: töröld a `policies.json`-t (vagy frissítsd a Thunderbirdöt), indítsd újra az EfMailAgent-et:
+      a naplóban figyelmeztetés, a bejegyzés visszakerül.
+- [ ] `EfMailAgent.exe uninstall-addon` -> csak az EfMailAgent bejegyzései tűnnek el a policies.json-ból; a
+      Thunderbird újraindítása után az add-on már nem kötelező (a Kiegészítők kezelőjében eltávolítható).
+- [ ] Profil mód (ha a policy mód valamiért nem használható): `EfMailAgent.exe install-addon --mode profile`
+      (szolgáltatásként futtatva `--user-profile-root C:\Users\<felhasználó>\AppData\Roaming\Thunderbird`) -> a
+      Thunderbird indításkor rákérdez az add-onra; a tokent a beállításoknál kell megadni.

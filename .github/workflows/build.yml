@@ -133,6 +133,42 @@ jobs:
           $csv = Get-ChildItem (Join-Path $data 'output') -Filter 'eloreendeles_*.csv' | Select-Object -First 1
           if (-not $csv) { throw "no CSV was written" }
           Write-Host "API smoke test OK: $($csv.FullName)"
+      - name: install-addon / addon-status / uninstall-addon against a fake Thunderbird folder
+        shell: pwsh
+        run: |
+          $exe = Resolve-Path dist/EfMailAgent.exe
+          $tb = Join-Path $env:RUNNER_TEMP 'fake-thunderbird'
+          $data = Join-Path $env:RUNNER_TEMP 'efaddon'
+          New-Item -ItemType Directory -Force (Join-Path $tb 'distribution') | Out-Null
+          New-Item -ItemType File -Force (Join-Path $tb 'thunderbird.exe') | Out-Null
+          Set-Content (Join-Path $tb 'application.ini') "[App]`nName=Thunderbird`nVersion=140.5.0esr"
+          $policyPath = Join-Path $tb 'distribution/policies.json'
+          Set-Content $policyPath '{ "policies": { "DisableAppUpdate": true, "3rdparty": { "Extensions": { "other@x": { "a": 1 } } } } }'
+
+          & $exe install-addon --mode policy --thunderbird-dir $tb --data-dir $data
+          if ($LASTEXITCODE -ne 0) { throw "install-addon failed with exit code $LASTEXITCODE" }
+          $version = (Get-Content VERSION -Raw).Trim()
+          $token = (& $exe print-token --data-dir $data | Out-String).Trim()
+          $p = Get-Content $policyPath -Raw | ConvertFrom-Json
+          if ($p.policies.DisableAppUpdate -ne $true) { throw "an unrelated policy was lost" }
+          if ($p.policies.'3rdparty'.Extensions.'other@x'.a -ne 1) { throw "an unrelated 3rdparty entry was lost" }
+          $entry = $p.policies.ExtensionSettings.'efmailagent@energofish.hu'
+          if ($entry.installation_mode -ne 'force_installed') { throw "installation_mode is $($entry.installation_mode)" }
+          if (-not $entry.install_url.StartsWith('file:///') -or -not $entry.install_url.EndsWith("efmailagent-$version.xpi")) { throw "install_url is $($entry.install_url)" }
+          $managed = $p.policies.'3rdparty'.Extensions.'efmailagent@energofish.hu'
+          if ($managed.serverUrl -ne 'http://127.0.0.1:47811' -or $managed.token -ne $token) { throw "3rdparty entry is wrong" }
+          if (-not (Test-Path (Join-Path $data "addon/efmailagent-$version.xpi"))) { throw "XPI was not copied to the data folder" }
+          if (-not (Get-ChildItem (Join-Path $tb 'distribution') -Filter 'policies.json.bak-*')) { throw "no backup was made" }
+
+          & $exe addon-status --thunderbird-dir $tb --data-dir $data
+          if ($LASTEXITCODE -ne 0) { throw "addon-status is not OK ($LASTEXITCODE)" }
+
+          & $exe uninstall-addon --thunderbird-dir $tb --data-dir $data
+          if ($LASTEXITCODE -ne 0) { throw "uninstall-addon failed with exit code $LASTEXITCODE" }
+          $p = Get-Content $policyPath -Raw | ConvertFrom-Json
+          if ($p.policies.ExtensionSettings -or $p.policies.'3rdparty'.Extensions.'efmailagent@energofish.hu') { throw "our entries were not removed" }
+          if ($p.policies.DisableAppUpdate -ne $true -or $p.policies.'3rdparty'.Extensions.'other@x'.a -ne 1) { throw "uninstall removed unrelated keys" }
+          Write-Host "Add-on installation smoke test OK"
       - uses: actions/upload-artifact@v4
         with:
           name: EfMailAgent-win-x64

@@ -6,8 +6,8 @@
 | 2 | Core pipeline (queue, worker, LLM, validation, CSV) | **done** |
 | 3 | HTTP API | **done** |
 | 4 | Thunderbird add-on | **done** |
-| 5 | Add-on installation from the exe | next |
-| 6 | Admin UI | |
+| 5 | Add-on installation from the exe | **done** |
+| 6 | Admin UI | next |
 | 7 | Windows Service and installer | |
 | 8 | End-to-end test, hardening, user guide | |
 
@@ -171,3 +171,37 @@
 ### Notes for the next step
 - Decisions D-401..D-411. Step 5 must write `policies.ExtensionSettings` and `policies["3rdparty"].Extensions` with
   `serverUrl` and `token`, which `config.js` reads via `storage.managed`.
+
+---
+
+## Step 5: Add-on installation from the exe (done, 2026-11-26)
+
+### What exists
+- Verified the enterprise policy docs for ESR 153 / 140 (D-501): `ExtensionSettings` `force_installed` with a
+  `file:///` `install_url` and `3rdparty` -> `storage.managed` are supported; no alternative needed.
+- `src/EfMailAgent/Addon/`:
+  - `ThunderbirdLocator` (registry 64/32-bit views behind `IRegistryReader`, default paths, `application.ini` version,
+    running check), `FixedThunderbirdLocator` (`--thunderbird-dir`), `CombinedThunderbirdLocator`.
+  - `ThunderbirdProfiles` (`profiles.ini`, relative/absolute paths, `[Install...]` and `Default=1` defaults).
+  - `AddonPackage` (XPI manifest id/version, bundled XPI lookup, versioned file name).
+  - `PolicyFile` (load/classify, merge, remove, backup, atomic UTF-8 write).
+  - `AddonInstaller` (install policy/profile, uninstall, status, self-heal) and `AddonSelfHealService` (hosted
+    service, runs in the background at service start).
+- CLI: `install-addon [--mode policy|profile] [--profile] [--xpi] [--thunderbird-dir] [--user-profile-root]`,
+  `uninstall-addon [--thunderbird-dir] [--profile] [--user-profile-root]`, `addon-status [--thunderbird-dir] [--xpi]`.
+  Exit codes: 6 no Thunderbird / no XPI, 7 no admin rights / not writable, 8 malformed policies.json, 1 status not OK.
+- Tests (33 new): policies.json merging (no file, empty file, other policies, older version of our entry, malformed
+  JSON not overwritten, uninstall keeps other keys, idempotent install, backups, BOM-less pretty output), locator
+  with a fake registry, profiles.ini, XPI reading, admin check, profile mode, status, self-heal (no state, missing
+  entry, changed token, newer XPI, no Thunderbird, broken state file).
+- CI (Windows): `install-addon --mode policy` against a temporary fake Thunderbird folder, checks of the merged
+  policies.json, `addon-status`, `uninstall-addon`.
+
+### Verification
+- `dotnet test`: **238 passed**; Node tests 84 passed; e2e simulation passed.
+- Manual run in the sandbox against a fake Thunderbird folder: install merged the entries next to the existing
+  `DisableAppUpdate` / other extension keys and made a backup, `addon-status` printed "Állapot: RENDBEN", uninstall
+  left exactly the original keys, a malformed policies.json was refused with exit code 8 and left untouched.
+
+### Notes for the next step
+- Decisions D-501..D-507. The admin UI (Step 6) can show `AddonInstaller.GetStatus()` for the add-on panel.

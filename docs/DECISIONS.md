@@ -393,5 +393,74 @@ The first Windows CI run of `build.ps1` showed that a single-file publish leaves
 database. `IncludeNativeLibrariesForSelfExtract=true` embeds them (extracted to a temp folder at first start), so
 `EfMailAgent.exe` is really one file, which the installer (Step 7) relies on.
 
+## Step 5
+
+### D-501 Enterprise policy support verified
+Checked on 2026-11-26 against the official generated policy docs
+(https://thunderbird.github.io/policy-templates/, pages for ESR 153.8.0 and ESR 140.17.0; ESR 128 is listed too):
+- `ExtensionSettings` is supported (base 68, `installation_mode` / `install_url` 89). `force_installed`: "installed
+  automatically and the user can neither disable nor remove it". `install_url` may be "a `file:///` URL"; native
+  paths are not supported, hence `new Uri(path).AbsoluteUri` (`file:///C:/ProgramData/...`). Nothing about signing.
+- `3rdparty` is supported (78): "Set policies that WebExtensions can access via chrome.storage.managed ... which the
+  extension reads with `browser.storage.managed`". Shape `policies["3rdparty"].Extensions[<id>] = { ... }`.
+- Windows location: `distribution\policies.json` next to `thunderbird.exe`; every example uses the top-level
+  `{ "policies": { ... } }` wrapper. GPO (`Software\Policies\Mozilla\Thunderbird`) exists as an alternative; the
+  precedence between GPO and policies.json and whether the file is read only at startup are not documented (we tell
+  the user to restart Thunderbird).
+Nothing had to be replaced by an alternative, so the CLAUDE.md design stands.
+
+### D-502 Versioned XPI file name (deviation)
+CLAUDE.md shows `install_url: file:///C:/ProgramData/EfMailAgent/addon/efmailagent.xpi`. We copy the XPI as
+`addon\efmailagent-<version>.xpi` and point `install_url` there, deleting older versioned copies. Reason: with a
+fixed URL Thunderbird has no reason to notice that the file behind it changed after an upgrade; a new URL per
+version makes the policy entry itself change, which is the reliable trigger for reinstalling a force-installed
+add-on. `addon-status` and self-heal treat a different URL as "outdated". (To confirm on site:
+docs/WINDOWS_ACCEPTANCE.md.)
+
+### D-503 Install details
+- The bundled XPI is `efmailagent.xpi` next to the exe (`build.ps1` puts both in `dist\`); `--xpi` overrides it;
+  during development `dist/efmailagent.xpi` of the repository is found by walking up. Its manifest id must be
+  `efmailagent@energofish.hu`.
+- Thunderbird folders: `HKLM\SOFTWARE\Mozilla\Mozilla Thunderbird\<version>\Main\Install Directory` in the 64-bit
+  and the 32-bit registry view, then `Program Files` / `Program Files (x86)\Mozilla Thunderbird`; a folder counts if
+  it has `thunderbird.exe` (or `application.ini`). Stale registry entries are ignored, duplicates merged, the
+  version comes from `application.ini`. `--thunderbird-dir` replaces the search (tests, CI, unusual installs).
+  Every installation found gets the entry.
+- All `policies.json` files are validated before anything is written; a malformed one stops the command with exit
+  code 8 and is never touched. Otherwise the file is backed up as `policies.json.bak-yyyyMMdd-HHmmss` (never
+  overwriting an older backup), merged (only our two keys change), written UTF-8 without BOM, indented, via temp file +
+  rename. An already up-to-date file is not rewritten and not backed up.
+- Admin rights are checked up front in policy mode (Windows; exit code 7 with a Hungarian hint to use an elevated
+  prompt or `--mode profile`). No Thunderbird or no XPI: exit code 6.
+- The output says whether Thunderbird is running and that it must be restarted.
+
+### D-504 Install state file and self-heal
+`install-addon` writes `addon\install-state.json` (mode, version, Thunderbird folders, time); `uninstall-addon`
+deletes it. Self-heal runs in the background at every service start and acts **only** when that file says
+`policy`: otherwise an intentional `uninstall-addon` would be undone by the next service start, and a developer
+machine would get policies it never asked for. It repairs a missing entry (e.g. after a Thunderbird update replaced
+the program folder), a changed token or port, and an XPI older than the bundled one, and logs a warning. It also uses
+the folders recorded in the state file (so a `--thunderbird-dir` install is healed too). It never throws; without
+Thunderbird it only logs.
+
+### D-505 Uninstall
+Removes only our `ExtensionSettings` and `3rdparty.Extensions` entries (and containers that become empty), backs the
+file up first, deletes `<profile>\extensions\efmailagent@energofish.hu.xpi` from the given profile or from every
+profile in `profiles.ini`, and deletes the state file. Once the policy entry is gone the add-on is no longer
+enforced; Thunderbird may keep the installed copy in the profile, so the output tells the user it can be removed in
+the Add-ons Manager. (Blocking it via policy would add keys, which "reverse the policy entries" does not ask for.)
+
+### D-506 Profile mode
+`--mode profile` copies the XPI to `<profile>\extensions\efmailagent@energofish.hu.xpi` of the `--profile` folder or
+of the default profile from `profiles.ini` (`[Install...] Default=` first, then `Default=1`). The profile root is
+`%APPDATA%\Thunderbird` or `--user-profile-root` (a service account's APPDATA is not the user's). Thunderbird asks the
+user to allow such a side-loaded add-on, and there is no managed storage in this mode, so the output prints the
+server URL and how to get the token for the options page.
+
+### D-507 Token in policies.json
+The token ends up in `<Thunderbird>\distribution\policies.json`, which every local user can read (it is in Program
+Files). This is accepted: the API listens on 127.0.0.1 only, and on this dedicated server the local users are the
+operators anyway. It is documented for the user guide (Step 8).
+
 ## Planned for later steps (decided now, implemented later)
 

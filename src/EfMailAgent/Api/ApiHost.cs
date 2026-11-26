@@ -39,6 +39,8 @@ public static class ApiHost
         builder.Services.AddEfMailAgentCore(settings);
         builder.Services.AddEfMailAgentWorker();
         builder.Services.AddSingleton<LlmHealthCache>();
+        builder.Services.AddSingleton<Addon.AddonSelfHealService>();
+        builder.Services.AddHostedService(sp => sp.GetRequiredService<Addon.AddonSelfHealService>());
         builder.Services.Configure<JsonOptions>(o =>
             o.SerializerOptions.Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping);
         builder.Services.AddCors(options => options.AddPolicy(ApiEndpoints.CorsPolicy, policy => policy
