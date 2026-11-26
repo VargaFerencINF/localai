@@ -237,8 +237,67 @@ A small converter (`Email/HtmlToText`) exists already; Step 3 reuses it for `bod
 (Step 3) will reuse it. `TimeProvider` is injected everywhere time matters, which keeps the retry tests
 deterministic.
 
+## Step 3
+
+### D-301 Service mode = no subcommand
+`EfMailAgent.exe` without a command runs the worker and the HTTP API until Ctrl+C (Step 7 adds the Windows Service
+lifetime to the same path). `--data-dir` works here too. A taken port stops the process with a Hungarian fatal log
+line and exit code 5.
+
+### D-302 `/api/matchers` also returns `priority`
+The add-on needs it to pick the same best rule as the exe in the shared-vector parity tests. Matchers are ordered by
+priority, then id. `ETag` = `"<rulesVersion>"`, `Cache-Control: no-cache`; `If-None-Match` with that value (or `*`)
+gives `304` with an empty body.
+
+### D-303 CORS and the Origin Thunderbird sends
+Thunderbird is Gecko based: requests made by an extension (background page, options page) carry
+`Origin: moz-extension://<UUID>`, where the UUID is generated per profile and installation, so it cannot be known in
+advance. The policy therefore accepts any `moz-extension://<host>` origin (GET/POST, headers `X-EfMailAgent-Token`,
+`Content-Type`, `If-None-Match`, exposes `ETag`, preflight cached 10 minutes) and nothing else: web pages
+(`http(s)://`), other browsers' extensions and `null` origins get no CORS headers. Because the token is a custom
+header, any browser request from a web page needs a preflight, which is refused, and without the token every call is
+`401` anyway. With `host_permissions` for `http://127.0.0.1/*` Gecko does not even enforce CORS for the extension,
+so the policy is defence in depth.
+Verification: this could not be observed in the sandbox (no Thunderbird). The API logs the `Origin` of every
+request at Debug level and of rejected requests at Warning; the on-site check is in `docs/WINDOWS_ACCEPTANCE.md`.
+
+### D-304 Contract details
+- `POST /api/jobs`: duplicates are detected **before** rule matching (a re-submitted message always gets its
+  existing job). `202` and `200` share one body shape: `{ jobId, ruleId, status, duplicate }`.
+- `to` may be a string or an array of strings (Thunderbird gives an array); arrays are joined with `", "`.
+- `source` defaults to `auto`; `receivedAt` must be ISO 8601. `ruleId` must name an existing, enabled rule (else
+  `422`) and skips subject matching.
+- `400` body: `{ error, errors: { field: [messages] } }` in Hungarian; `401` and `413` have empty bodies.
+- `GET /api/jobs` returns `{ jobs: [...] }` (newest first, `limit` 1..500, default 50); job objects contain the
+  spec fields plus `messageId`, `subject`, `source`, `nextAttemptAt`.
+- `POST /api/jobs/{id}/retry`: `200` with the job, `404` unknown, `409` when the job is not `failed`/`needs_review`.
+- `GET /api/health`: spec fields plus `llmProvider`, `llmModel`, `llmError`, `llmOutage`, `validRules`,
+  `invalidRules`; `status` is `ok` or `degraded` (LLM unreachable or a rule invalid). The LLM check is cached 30 s.
+- The OpenAPI document (`/api/openapi.json`, OpenAPI 3.1 from `Microsoft.AspNetCore.OpenApi`) also requires the
+  token, like every `/api/*` path.
+
+### D-305 Size limit
+Kestrel's `MaxRequestBodySize` is 2 MB; the guard middleware also rejects a larger `Content-Length` with `413`
+(this also covers the in-memory test server, which ignores Kestrel limits).
+
+### D-306 Token comparison
+Both the configured and the presented token are hashed with SHA-256 and compared with
+`CryptographicOperations.FixedTimeEquals`, so neither content nor length leaks through timing.
+
+### D-307 Host details
+`WebApplication.CreateSlimBuilder` with the content root set to the exe folder (no `appsettings.json` is picked up
+from the current directory; ours lives in the data folder). No `Server` header. Serilog is the only logging provider.
+
+### D-308 API tests use TestServer instead of WebApplicationFactory
+`Program` is a System.CommandLine entry point, so `WebApplicationFactory` cannot intercept a host built in `Main`
+reliably. The tests call the production `ApiHost.Build(...)` and swap Kestrel for `TestServer`: same services, same
+middleware, same endpoints. Binding to 127.0.0.1 and the port-in-use path are tested with the real Kestrel server.
+
+### D-309 Development submit script in two flavours
+`scripts/dev-submit.ps1` (Windows, PowerShell 5.1 and 7, uses `HttpClient` so UTF-8 bodies and 4xx answers behave
+the same) and `scripts/dev-submit.mjs` (Node, for the Linux sandbox and CI). Both read port and token from the data
+folder's `appsettings.json`, submit an `.eml` (headers parsed) or `.txt` (metadata from `samples/emails/index.json`),
+and wait for the job to finish.
+
 ## Planned for later steps (decided now, implemented later)
 
-### D-302 (Step 3) `/api/matchers` also returns `priority`
-The add-on's matching parity tests (shared vectors) need the priority to choose the best rule; the extra field is
-backwards compatible.

@@ -75,12 +75,13 @@ public static class CliApp
         });
         root.Subcommands.Add(testRule);
 
-        // No subcommand: the service/console host arrives in Step 3; until then show help.
-        root.SetAction(parse =>
+        // No subcommand: run the worker and the HTTP API (console mode now, Windows Service in Step 7).
+        root.SetAction(async (parse, cancellationToken) =>
         {
-            error.WriteLine("Adj meg egy parancsot. A szolgáltatás (HTTP API + feldolgozó) üzemmód később készül el.");
-            error.WriteLine();
-            return new System.CommandLine.Help.HelpAction().Invoke(parse);
+            using var context = AgentContextFactory.Create(parse.GetValue(dataDirOption), error, LogEventLevel.Information);
+            if (context is null)
+                return ExitCodes.ConfigurationError;
+            return await RunCommand.RunAsync(context, cancellationToken);
         });
 
         return root;
@@ -105,6 +106,7 @@ public static class ExitCodes
     public const int ConfigurationError = 2;
     public const int UsageError = 3;
     public const int ProcessingFailed = 4;
+    public const int PortInUse = 5;
 }
 
 internal static class ValidateRulesCommand

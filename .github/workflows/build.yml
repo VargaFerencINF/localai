@@ -30,6 +30,22 @@ jobs:
         run: dotnet test --no-build -c Release --logger "trx;LogFileName=linux.trx" --results-directory TestResults
       - name: Validate sample rules with the CLI
         run: dotnet src/EfMailAgent/bin/Release/net10.0/EfMailAgent.dll validate-rules --data-dir "$RUNNER_TEMP/efdata"
+      - name: API smoke test (service mode + dev-submit)
+        run: |
+          D="$RUNNER_TEMP/efapi"
+          dotnet src/EfMailAgent/bin/Release/net10.0/EfMailAgent.dll --data-dir "$D" > "$RUNNER_TEMP/efapi.log" 2>&1 &
+          PID=$!
+          for i in $(seq 1 60); do
+            if [ -f "$D/appsettings.json" ]; then
+              TOKEN=$(node -p "require('$D/appsettings.json').Server.Token")
+              curl -sf -o /dev/null -H "X-EfMailAgent-Token: $TOKEN" http://127.0.0.1:47811/api/health && break
+            fi
+            sleep 1
+          done
+          node scripts/dev-submit.mjs --data-dir "$D"
+          kill $PID
+          wait $PID || true
+          cat "$RUNNER_TEMP/efapi.log"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -77,6 +93,29 @@ jobs:
           if ($actual[0] -ne 0xEF -or $actual[1] -ne 0xBB -or $actual[2] -ne 0xBF) { throw "CSV has no UTF-8 BOM" }
           if ((Mask $actual) -cne (Mask $expected)) { throw "CSV differs from samples/expected/demo_eloreendeles_01.csv" }
           Write-Host "Smoke test OK"
+      - name: API smoke test (service mode + dev-submit.ps1)
+        shell: pwsh
+        run: |
+          $exe = Resolve-Path dist/win-x64/EfMailAgent.exe
+          $data = Join-Path $env:RUNNER_TEMP 'efapi'
+          $log = Join-Path $env:RUNNER_TEMP 'efapi'
+          $process = Start-Process $exe -ArgumentList '--data-dir', $data -PassThru -NoNewWindow `
+            -RedirectStandardOutput "$log.out" -RedirectStandardError "$log.err"
+          $ready = $false
+          for ($i = 0; $i -lt 60 -and -not $ready; $i++) {
+            Start-Sleep -Seconds 1
+            if (Test-Path (Join-Path $data 'appsettings.json')) {
+              $token = (Get-Content (Join-Path $data 'appsettings.json') -Raw | ConvertFrom-Json).Server.Token
+              try { Invoke-RestMethod -Uri 'http://127.0.0.1:47811/api/health' -Headers @{ 'X-EfMailAgent-Token' = $token } | Out-Null; $ready = $true } catch { }
+            }
+          }
+          if (-not $ready) { Get-Content "$log.err"; throw "the API did not start" }
+          & ./scripts/dev-submit.ps1 -DataDir $data
+          if ($LASTEXITCODE -ne 0) { throw "dev-submit.ps1 failed" }
+          Stop-Process -Id $process.Id
+          $csv = Get-ChildItem (Join-Path $data 'output') -Filter 'eloreendeles_*.csv' | Select-Object -First 1
+          if (-not $csv) { throw "no CSV was written" }
+          Write-Host "API smoke test OK: $($csv.FullName)"
       - uses: actions/upload-artifact@v4
         with:
           name: EfMailAgent-win-x64

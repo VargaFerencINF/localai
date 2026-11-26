@@ -4,8 +4,8 @@
 |---|---|---|
 | 1 | Scaffold, configuration, rule loading | **done** |
 | 2 | Core pipeline (queue, worker, LLM, validation, CSV) | **done** |
-| 3 | HTTP API | next |
-| 4 | Thunderbird add-on | |
+| 3 | HTTP API | **done** |
+| 4 | Thunderbird add-on | next |
 | 5 | Add-on installation from the exe | |
 | 6 | Admin UI | |
 | 7 | Windows Service and installer | |
@@ -98,3 +98,40 @@
 ### Notes for the next step
 - Decisions D-201..D-214; D-302 (`priority` in `/api/matchers`) applies to Step 3.
 - `ServiceRegistration.AddEfMailAgentCore` + `AddEfMailAgentWorker` are ready for the WebApplication host.
+
+---
+
+## Step 3: HTTP API (done, 2026-11-26)
+
+### What exists
+- **Service mode**: `EfMailAgent` without a command hosts the worker and the API in one process (`Api/ApiHost`,
+  `Cli/RunCommand`), Kestrel bound to `127.0.0.1:<Server.Port>` only; a taken port gives a Hungarian fatal message
+  and exit code 5.
+- **Endpoints** (`Api/ApiEndpoints`): `GET /api/health`, `GET /api/matchers` (ETag / 304, `priority`),
+  `POST /api/jobs` (202 / 200 duplicate / 400 / 413 / 422, never waits for the LLM), `GET /api/jobs/{id}`,
+  `GET /api/jobs?status=&limit=`, `POST /api/jobs/{id}/retry`, OpenAPI at `/api/openapi.json`.
+- **Security**: token middleware with constant-time comparison (401 without body), CORS only for
+  `moz-extension://*`, 2 MB request limit, Origin logged at Debug.
+- **HTML bodies**: `bodyHtml` without `bodyText` is converted server side (`Email/HtmlToText`).
+- **LLM health** cached for 30 s (`Api/LlmHealthCache`).
+- **Scripts**: `scripts/dev-submit.ps1` and `scripts/dev-submit.mjs`.
+- **Tests**: 21 API tests on TestServer (auth, every endpoint, duplicates, 422, ETag 304, oversized body, HTML body,
+  CORS, OpenAPI, retry, end-to-end demo email -> expected CSV through the worker) and 2 real Kestrel tests
+  (loopback-only binding, port in use).
+- **CI**: Linux and Windows jobs start the exe in service mode and submit the demo email with the dev-submit script.
+
+### Verification
+- `dotnet test`: **205 passed**, 0 failed.
+- Manual run in the sandbox: `dotnet run --project src/EfMailAgent -- --data-dir ./.devdata`, then
+  `node scripts/dev-submit.mjs`:
+  ```
+  POST /api/jobs -> HTTP 202 {"jobId":"69b6ab5d-...","ruleId":"eloreendeles","status":"queued","duplicate":false}
+  Feladat 69b6ab5d-...: needs_review, sorok: 5, kísérletek: 1
+  CSV: /home/user/localai/.devdata/output/eloreendeles_2026-11.csv
+  ```
+  A second submission returned `200` with `"duplicate":true`; the non-matching demo email returned `422`.
+- `dev-submit.ps1` cannot run in the sandbox (no PowerShell); it runs in the Windows CI job.
+
+### Notes for the next step
+- Decisions D-301..D-309. The add-on needs: token header, `moz-extension` origin, `priority` in matchers,
+  Message-ID with or without brackets, `to` as array.

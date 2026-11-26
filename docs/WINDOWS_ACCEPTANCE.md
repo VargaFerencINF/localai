@@ -40,3 +40,17 @@ Előkészítés: az `appsettings.json`-ban `"Llm": { "Provider": "ollama", "Base
 - [ ] Hálózati megosztás kimenetként (`Paths.Output` = `\\szerver\megosztas\efmailagent`): az írás működik a
       szolgáltatás fiókjával (a szolgáltatás a 7. lépésben készül; addig a saját felhasználóval).
 - [ ] (Opcionális) LM Studio: `Provider: openai_compatible`, `BaseUrl: http://127.0.0.1:1234` -> ugyanaz az eredmény.
+
+## 3. lépés: HTTP API
+
+- [ ] `EfMailAgent.exe` paraméter nélkül elindul, a naplóban: „EfMailAgent fut: http://127.0.0.1:47811/api”.
+      Windows tűzfal-figyelmeztetés nem jelenik meg (csak a 127.0.0.1-en figyel).
+- [ ] Egy másik gépről a `http://<szerver>:47811/api/health` nem érhető el.
+- [ ] Böngészőben a `http://127.0.0.1:47811/api/health` 401-et ad (token nélkül).
+- [ ] Második példány indítása: „A(z) 127.0.0.1:47811 port foglalt…” üzenet, kilépési kód 5.
+- [ ] `.\scripts\dev-submit.ps1 -DataDir <adatmappa>` (Windows PowerShell 5.1-ben és PowerShell 7-ben is) beküldi a demo
+      e-mailt, és kiírja a CSV útvonalát; az ékezetek a CSV-ben helyesek.
+- [ ] Ctrl+C feldolgozás közben (valódi Ollamával, hosszú válasznál): a feladat `queued` állapotba kerül vissza, és a
+      következő indításkor feldolgozódik.
+- [ ] A Thunderbird add-on (4. lépés) kéréseinél a naplóban (Debug szinten) látszik az `Origin: moz-extension://…`
+      fejléc, és a kérések nem akadnak el CORS miatt (lásd D-303).
