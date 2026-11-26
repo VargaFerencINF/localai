@@ -22,13 +22,15 @@ public sealed record EnabledRequest(bool Enabled);
 public sealed record OutputRequest(string? Mode, string? File);
 
 public sealed record OllamaModelRequest(string? Model, string? BaseUrl);
+
+public sealed record OllamaDeleteRequest(IReadOnlyList<string>? Models, string? SwitchTo, string? BaseUrl);
 public sealed record SkillRequest(string? FileName, string? Content);
 public sealed record CreateRuleRequest(string? Id, string? Name, string? CopyFrom);
 public sealed record TestRequest(string? RuleId, string? Subject, string? From, string? Body, DateTimeOffset? ReceivedAt);
 public sealed record LlmTestRequest(string? Provider, string? BaseUrl, string? MockDir);
 
 public sealed record AdminJobListItem(string Id, string Status, string RuleId, string? Subject, string? Sender, string Source, int Attempts,
-    int? RowCount, string? Error, DateTimeOffset CreatedAt, DateTimeOffset? FinishedAt, long? DurationMs);
+    int? RowCount, string? Error, DateTimeOffset CreatedAt, DateTimeOffset? FinishedAt, long? DurationMs, double? TokensPerSecond = null);
 
 /// <summary>JSON endpoints of the admin UI under /admin/api (cookie session + CSRF, see <see cref="AdminGuardMiddleware"/>).</summary>
 public static class AdminEndpoints
@@ -156,6 +158,15 @@ public static class AdminEndpoints
             return result.Saved ? Results.Ok(result) : Results.Json(result, statusCode: StatusCodes.Status422UnprocessableEntity);
         });
 
+        api.MapPost("/ollama/benchmark", async (OllamaModelRequest request, OllamaSetupService ollama, CancellationToken cancellationToken) =>
+            Results.Ok(await ollama.BenchmarkAsync(request.Model, request.BaseUrl, cancellationToken)));
+        api.MapPost("/ollama/delete", async (OllamaDeleteRequest request, OllamaSetupService ollama, CancellationToken cancellationToken) =>
+            Results.Ok(await ollama.DeleteAsync(request.Models, request.SwitchTo, request.BaseUrl, cancellationToken)));
+
+        // Teljesítmény page: machine load, Ollama state, LLM speed per job, warnings.
+        api.MapGet("/perf", (Hosting.PerformanceMonitor monitor, Hosting.ISystemMetrics metrics, JobQueue queue, EffectiveSettings settings) =>
+            Results.Ok(PerfReport.Build(monitor, metrics.Hardware(), queue.RecentLlmUsage(30), settings)));
+
         // Thunderbird add-on: status and one-click install / repair (UAC prompt when not elevated).
         api.MapGet("/addon", (AddonSetupService addonSetup) => Results.Ok(addonSetup.Status()));
         api.MapPost("/addon/install", async (AddonSetupService addonSetup, CancellationToken cancellationToken) =>
@@ -171,7 +182,7 @@ public static class AdminEndpoints
                 return Results.BadRequest(new ErrorResponse($"Ismeretlen állapot: {status}"));
             var jobs = queue.List(string.IsNullOrWhiteSpace(status) ? null : status, Math.Clamp(limit ?? 50, 1, 500));
             return Results.Ok(jobs.Select(j => new AdminJobListItem(j.Id, j.Status, j.RuleId, j.Subject, j.Sender, j.Source, j.Attempts, j.RowCount,
-                j.LastError, j.CreatedAt, j.FinishedAt, j.DurationMs)));
+                j.LastError, j.CreatedAt, j.FinishedAt, j.DurationMs, j.TokensPerSecond)));
         });
 
         api.MapGet("/jobs/{id}", (string id, JobQueue queue) =>
@@ -192,7 +203,7 @@ public static class AdminEndpoints
                 job.Id, job.Status, job.RuleId, job.MessageId, job.Account, job.Folder, job.ReceivedAt, job.Sender, job.Recipients, job.Subject,
                 job.AttachmentNames, job.Source, job.Attempts, job.NextAttemptAt, error = job.LastError, job.OutputFile, job.RowCount,
                 job.CreatedAt, job.StartedAt, job.FinishedAt, job.DurationMs, job.OriginalSender, job.PromptSystem, job.PromptUser,
-                job.RawResponse, job.RepairResponse, parsedRows = rows,
+                job.RawResponse, job.RepairResponse, parsedRows = rows, job.PromptTokens, job.OutputTokens, job.TokensPerSecond, job.LlmModel,
                 bodyText = job.BodyText is { Length: > 50_000 } body ? body[..50_000] + "\n[…]" : job.BodyText,
             });
         });

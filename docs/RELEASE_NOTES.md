@@ -1,5 +1,23 @@
 # EfMailAgent kiadási megjegyzések
 
+## 1.3.0 (2026-11-26)
+
+### Újdonságok
+
+- **Gépre szabott modellajánló** (Beállítások › AI telepítése és modellválasztás): a program felméri a gépet (memória,
+  processzor, videókártya, szabad hely), és minden modellnél megmutatja, hogy **elfér-e**, **mennyi idő alatt dolgoz
+  fel egy levelet** ezen a gépen, és mennyire jó magyarul. Jelölések: *ajánlott ehhez a géphez*, *gyorsabb*,
+  *pontosabb*. A **Gyors próba** gomb valós sebességet mér, a becslés ezután „mért” lesz; a valódi feldolgozások
+  sebessége is beszámít.
+- **Letöltött modellek kezelése:** bármelyik modell **törölhető, frissítés nélkül is**, egyesével vagy többet
+  kijelölve. A program által használt modellt csak úgy törli, hogy előbb átáll egy másikra. A régi modellek
+  **„elavult”** jelölést kapnak (pl. Qwen3 → Qwen3.5); a **Frissítés** letölti az újat, átállítja rá a programot, és
+  felajánlja a régi törlését. Kiírja, mennyi hely szabadul fel.
+- **Teljesítmény oldal** (új menüpont): élő grafikon a processzor, a memória és (ahol mérhető) a videókártya
+  terheléséről az elmúlt 15 percben; a betöltött AI-modell, és hogy processzoron vagy videókártyán fut; levelenként a
+  feldolgozási idő és a token/mp sebesség; figyelmeztetés, ha a gép túlterhelt vagy a modell nem fér el.
+- A feladat részleteinél látszik a modell, a sebesség és a felhasznált tokenek száma.
+
 ## 1.2.1 (2026-11-26)
 
 - Az AI telepítő varázsló modell-listája frissítve a jelenlegi Ollama modellekre: **Qwen3.5 9B** (ajánlott, kb. 6,6 GB),

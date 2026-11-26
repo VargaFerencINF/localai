@@ -332,6 +332,17 @@
 
 ---
 
+## Version 1.3.0 (2026-11-26)
+
+- From the ideas backlog (FEJLESZTESI_OTLETEK.md 1–3): machine-tailored model advisor with quick test (D-1101,
+  D-1102), model management with plain delete, bulk delete, outdated models and update (D-1103), Teljesítmény page with
+  live load, Ollama placement and per-job tokens/s (D-1104).
+- Verification: `dotnet test` 338 passed, Node 85 passed, e2e simulation passed, UI test 53/53 (local; fake Ollama with
+  delete, ps and timings). Real hardware readings (GPU counters, registry adapters) can only be checked on Windows:
+  `docs/WINDOWS_ACCEPTANCE.md`.
+
+---
+
 ## Version 1.2.0 (2026-11-26)
 
 - Requested: the exe as a desktop app; the Thunderbird add-on installer and a guided Ollama installer with model

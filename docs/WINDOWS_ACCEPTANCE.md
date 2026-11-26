@@ -189,3 +189,14 @@ Valódi Thunderbirddel, valódi helyi modellel, a v1.0.0 telepítővel.
 - [ ] Beállítások > Thunderbird bővítmény: nem rendszergazdaként indított programnál a gomb Windows engedélykérést mutat;
       Igen után „telepítve”, Nem után érthető üzenet; a Thunderbird újraindítása után a bővítmény működik.
 
+## 1.3.0: modellajánló, modellek kezelése, Teljesítmény oldal
+
+- [ ] Beállítások › AI: a gép összefoglalója helyes (processzor neve, memória, videókártya; az Intel Arc integrált
+      grafika „külön videókártya nélkül”), a qwen3.5:9b „elfér”, a becsült idő 1–3 perc/levél körül.
+- [ ] Gyors próba a qwen3.5:9b-n: token/mp üzenet, a sor „(mért)” lesz, a becslés közel a valódi Tesztkonzol-időhöz.
+- [ ] Letöltött modellek: egy régi modell (pl. qwen3:8b) „elavult”; Törlés gombbal frissítés nélkül törölhető, a hely
+      felszabadul (`ollama list`); a használt modell törlésénél átállást kér.
+- [ ] Teljesítmény oldal: a processzor- és memóriagörbe egyezik a Feladatkezelővel; feldolgozás közben a processzor
+      felmegy, a kártya „qwen3.5:9b … processzoron fut”; a videókártya-érték megjelenik vagy „nem mérhető”.
+- [ ] Egy feldolgozott levél részleteinél: modell, token/mp, tokenek.
+

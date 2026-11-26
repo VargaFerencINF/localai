@@ -164,7 +164,7 @@ $('logout').addEventListener('click', async () => {
 
 // ---------- router ----------
 
-const PAGES = { attekintes: renderOverview, szabalyok: renderRules, tesztkonzol: renderTestConsole, beallitasok: renderSettings, naplo: renderLogs };
+const PAGES = { attekintes: renderOverview, szabalyok: renderRules, tesztkonzol: renderTestConsole, teljesitmeny: renderPerf, beallitasok: renderSettings, naplo: renderLogs };
 const UNSAVED = 'A módosítások nincsenek mentve. Biztosan továbblépsz?';
 let timers = [];
 let cleanups = [];
@@ -363,6 +363,7 @@ async function openJob(id) {
       ...meta('Címzett', job.recipients), ...meta('Message-ID', job.messageId), ...meta('Postafiók / mappa', [job.account, job.folder].filter(Boolean).join(' / ')),
       ...meta('Beérkezett', formatDate(job.receivedAt)), ...meta('Sorba került', formatDate(job.createdAt)), ...meta('Befejeződött', formatDate(job.finishedAt)),
       ...meta('Kísérletek', job.attempts), ...meta('Feldolgozási idő', job.durationMs ? `${(job.durationMs / 1000).toFixed(1)} s` : '–'),
+      ...meta('AI modell, sebesség', job.llmModel || job.tokensPerSecond ? `${job.llmModel ?? ''}${job.tokensPerSecond ? ` · ${job.tokensPerSecond.toLocaleString('hu-HU')} token/mp` : ''}${job.outputTokens ? ` · ${job.promptTokens ?? '?'} + ${job.outputTokens} token` : ''}` : '–'),
       ...meta('Sorok', job.rowCount ?? '–'), ...meta('CSV fájl', job.outputFile ?? '–'),
       ...meta('Mellékletek', job.attachmentNames?.length ? job.attachmentNames.join(', ') : '–')),
     el('h3', { text: 'Kinyert sorok' }),
@@ -740,6 +741,8 @@ function progressBar(percent, label) {
   return bar;
 }
 
+let pendingUpgrade = null; // model update in progress: { from, to } (download, then switch, then offer deleting the old one)
+
 async function drawOllamaWizard(card, baseUrlOverride) {
   card.textContent = '';
   card.append(el('h2', { text: 'AI telepítése és modellválasztás (Ollama)' }),
@@ -772,22 +775,43 @@ async function drawOllamaWizard(card, baseUrlOverride) {
         : el('div', {}, el('p', { class: 'muted', text: st.cannotInstallReason }),
           el('a', { href: st.downloadPage, target: '_blank', rel: 'noopener' }, 'Az Ollama letöltése (ollama.com)'))];
 
-  // 2. Model
+  // 2. Model: recommendations for this machine
   const installedNames = new Set((st.models ?? []).map((m) => m.name));
   const isInstalled = (name) => installedNames.has(name) || installedNames.has(name.includes(':') ? name : `${name}:latest`);
-  const choices = [...st.choices];
-  for (const m of st.models ?? []) if (!choices.some((c) => c.name === m.name)) choices.push({ name: m.name, title: m.name, description: 'Már letöltött modell.', downloadGb: m.sizeGb, minRamGb: null });
-  let selected = st.currentProvider === 'ollama' && st.currentModel ? st.currentModel : (choices.find((c) => isInstalled(c.name))?.name ?? st.recommended);
+  const advice = [...(st.advice ?? [])];
+  for (const m of st.models ?? []) {
+    if (!advice.some((a) => a.name === m.name)) advice.push({ name: m.name, title: m.name, description: m.successor ? `Régebbi modell; újabb: ${m.successor}.` : 'Letöltött modell.', downloadGb: m.sizeGb, hungarian: 0, fit: null, tags: [] });
+  }
+  let selected = st.currentProvider === 'ollama' && st.currentModel ? st.currentModel : (st.recommended ?? advice[0]?.name);
   const custom = el('input', { id: 'ollama-custom', type: 'text', placeholder: 'egyéb modell, pl. mistral-nemo:12b', 'aria-label': 'Egyéb modell neve', spellcheck: 'false' });
-  const rows = choices.map((c) => {
+  const TAGS = { ajanlott: ['ajánlott ehhez a géphez', 'done'], gyorsabb: ['gyorsabb', 'queued'], pontosabb: ['pontosabb', 'processing'] };
+  const FIT = { ok: ['elfér', 'valid'], tight: ['szűkös', 'warn'], no: ['nem fér el', 'invalid'] };
+  const minutes = (sec) => sec < 90 ? `~${sec} mp/levél` : `~${(sec / 60).toLocaleString('hu-HU', { maximumFractionDigits: 1 })} perc/levél`;
+  const rows = advice.map((c) => {
     const radio = el('input', { type: 'radio', name: 'ollama-model', value: c.name, 'aria-label': c.title, checked: c.name === selected, onchange: () => { selected = c.name; custom.value = ''; updateButtons(); } });
-    return el('tr', {},
+    const bench = isInstalled(c.name) ? el('button', { type: 'button', class: 'small-btn', title: 'Rövid mérés ezen a gépen: valós sebesség és becsült idő levelenként', onclick: async (e) => {
+      e.target.disabled = true;
+      e.target.textContent = 'Mérés…';
+      try {
+        const r = await api('POST', '/ollama/benchmark', { model: c.name, baseUrl: url.value });
+        toast(`${c.name}: ${r.generationTokPerSec.toLocaleString('hu-HU')} token/mp, becsült ${minutes(r.secondsPerEmail)}`, 'ok', 8000);
+        drawOllamaWizard(card, url.value);
+      } catch (error) {
+        toast(error.body?.error ?? error.message, 'error', 8000);
+        e.target.disabled = false;
+        e.target.textContent = 'Gyors próba';
+      }
+    } }, 'Gyors próba') : null;
+    return el('tr', { class: c.fit === 'no' ? 'dim' : '' },
       el('td', {}, radio),
-      el('td', {}, el('strong', { text: c.title }), c.name === st.recommended ? el('span', { class: 'badge done', text: 'ajánlott ehhez a géphez' }) : null,
+      el('td', {}, el('strong', { text: c.title }), ...(c.tags ?? []).map((t) => el('span', { class: `badge ${TAGS[t][1]}`, text: TAGS[t][0] })),
         isInstalled(c.name) ? el('span', { class: 'badge valid', text: 'letöltve' }) : null,
         el('div', { class: 'small muted', text: `${c.name} · ${c.description}` })),
-      el('td', { class: 'nowrap small', text: c.downloadGb ? `kb. ${String(c.downloadGb).replace('.', ',')} GB` : '' }),
-      el('td', { class: 'nowrap small', text: c.minRamGb ? `${c.minRamGb} GB RAM-tól` : '' }));
+      el('td', { class: 'small' }, c.fit ? el('span', { class: `badge ${FIT[c.fit][1]}`, title: c.fitText, text: FIT[c.fit][0] }) : null,
+        c.secondsPerEmail ? el('div', { class: 'nowrap', title: c.measured ? 'Ezen a gépen mért sebesség alapján' : 'A gép adataiból becsülve', text: `${minutes(c.secondsPerEmail)}${c.measured ? ' (mért)' : ''}` }) : null),
+      el('td', { class: 'nowrap small', title: 'Magyar nyelvi minőség (becslés)', text: c.hungarian ? '★'.repeat(c.hungarian) + '☆'.repeat(5 - c.hungarian) : '' }),
+      el('td', { class: 'nowrap small', text: c.downloadGb ? `${String(c.downloadGb).replace('.', ',')} GB` : '' }),
+      el('td', {}, bench));
   });
   custom.addEventListener('input', () => {
     if (custom.value.trim()) { selected = custom.value.trim(); for (const r of card.querySelectorAll('input[name=ollama-model]')) r.checked = false; }
@@ -796,17 +820,20 @@ async function drawOllamaWizard(card, baseUrlOverride) {
   const pull = el('button', { type: 'button', id: 'ollama-pull', onclick: async () => {
     try { await api('POST', '/ollama/pull', { model: selected, baseUrl: url.value }); watchTask(); } catch (error) { toast(error.body?.error ?? error.message, 'error', 8000); }
   } }, 'Letöltés');
-  const apply = el('button', { type: 'button', class: 'primary', id: 'ollama-apply', onclick: async () => {
+  const apply = el('button', { type: 'button', class: 'primary', id: 'ollama-apply', onclick: () => applyModel(selected) }, 'Használat ezzel a modellel');
+  const applyStatus = el('div');
+  async function applyModel(model, quiet) {
     applyStatus.textContent = '';
     try {
-      await api('POST', '/ollama/apply', { model: selected, baseUrl: url.value });
-      toast(`Az AI beállítva: ${selected}`, 'ok');
-      route(); // redraw the settings page with the new values
+      await api('POST', '/ollama/apply', { model, baseUrl: url.value });
+      if (!quiet) toast(`Az AI beállítva: ${model}`, 'ok');
+      if (!quiet) route(); // redraw the settings page with the new values
+      return true;
     } catch (error) {
       applyStatus.append(messageList(error.body?.errors ?? [error.body?.error ?? error.message]));
+      return false;
     }
-  } }, 'Használat ezzel a modellel');
-  const applyStatus = el('div');
+  }
   function updateButtons() {
     const have = isInstalled(selected);
     pull.disabled = !st.reachable || have || !selected;
@@ -815,18 +842,107 @@ async function drawOllamaWizard(card, baseUrlOverride) {
   }
   updateButtons();
 
+  const hw = st.hardware ?? {};
+  const gpu = (hw.gpus ?? []).find((g) => g.discrete);
+  const hwText = `Ez a gép: ${hw.cpuName ?? 'processzor'} (${hw.logicalCores} szál), ${Math.round(hw.totalRamGb)} GB memória, `
+    + (gpu ? `videókártya: ${gpu.name}${gpu.dedicatedVramGb ? ` (${gpu.dedicatedVramGb} GB)` : ''}` : 'külön videókártya nélkül (az AI a processzoron fut)')
+    + (hw.freeDiskGb ? `, szabad hely: ${Math.round(hw.freeDiskGb)} GB` : '') + '.';
   const step2 = st.reachable
-    ? [el('p', { class: 'muted small', text: `Ennek a gépnek kb. ${st.ramGb} GB memóriája van. Nagyobb modell pontosabb, de lassabb; videókártya nélkül a 4–8B modellek ajánlottak.` }),
-      el('div', { class: 'table-wrap' }, el('table', { class: 'model-table' }, el('tbody', {}, rows))), custom,
+    ? [el('p', { class: 'muted small', id: 'hw-summary', text: hwText }),
+      el('p', { class: 'muted small', text: `Az ajánlás a gép memóriájából és a mért sebességből készül (modell-lista: ${st.catalogUpdated}). Az idő egy átlagos előrendelő levélre vonatkozik; a „Gyors próba” megméri a valós sebességet.` }),
+      el('div', { class: 'table-wrap' }, el('table', { class: 'model-table' },
+        el('thead', {}, el('tr', {}, ...['', 'Modell', 'Ezen a gépen', 'Magyar', 'Méret', ''].map((h) => el('th', { text: h })))),
+        el('tbody', {}, rows))), custom,
       el('div', { class: 'row' }, pull, apply), applyStatus]
     : [el('p', { class: 'muted', text: 'Előbb az Ollamának futnia kell (1. lépés).' })];
+
+  // 3. Downloaded models: delete (independently of updating), outdated ones, update to the successor
+  const models = st.models ?? [];
+  const checked = new Set();
+  const bulk = el('button', { type: 'button', class: 'danger', id: 'models-delete-selected', disabled: true, onclick: () => deleteModels([...checked]) }, 'Kijelöltek törlése');
+  const sizeOf = (names) => models.filter((m) => names.includes(m.name)).reduce((a, m) => a + (m.sizeGb ?? 0), 0);
+  const gb = (v) => `${v.toLocaleString('hu-HU', { maximumFractionDigits: 1 })} GB`;
+  const updateBulk = () => {
+    bulk.disabled = checked.size === 0;
+    bulk.textContent = checked.size ? `Kijelöltek törlése (${checked.size} db, ${gb(sizeOf([...checked]))})` : 'Kijelöltek törlése';
+  };
+  const modelRows = models.map((m) => el('tr', {},
+    el('td', {}, el('input', { type: 'checkbox', 'aria-label': `${m.name} kijelölése`, onchange: (e) => { if (e.target.checked) checked.add(m.name); else checked.delete(m.name); updateBulk(); } })),
+    el('td', {}, el('strong', { text: m.name }), m.inUse ? el('span', { class: 'badge done', text: 'használatban' }) : null,
+      m.successor ? el('span', { class: 'badge warn', text: 'elavult', title: `Újabb modell: ${m.successor}` }) : null,
+      el('div', { class: 'small muted', text: m.modifiedAt ? `letöltve: ${formatDate(m.modifiedAt)}` : '' })),
+    el('td', { class: 'nowrap small', text: m.sizeGb ? gb(m.sizeGb) : '' }),
+    el('td', { class: 'row-actions' },
+      m.successor ? el('button', { type: 'button', class: 'small-btn', onclick: () => upgradeModel(m) }, m.successorInstalled ? `Átállás: ${m.successor}` : `Frissítés: ${m.successor}`) : null,
+      el('button', { type: 'button', class: 'small-btn danger', 'data-delete': m.name, onclick: () => deleteModels([m.name]) }, 'Törlés'))));
+  const outdatedGb = models.filter((m) => m.successor).reduce((a, m) => a + (m.sizeGb ?? 0), 0);
+  const step3 = st.reachable && models.length
+    ? [el('p', { class: 'muted small', text: 'Bármelyik modell törölhető, frissítés nélkül is. Az „elavult” jelölésűeknek van újabb változata; a frissítés letölti az újat, átállítja rá a programot, és felajánlja a régi törlését.' }),
+      el('div', { class: 'table-wrap' }, el('table', { class: 'model-table', id: 'installed-models' }, el('tbody', {}, modelRows))),
+      el('div', { class: 'row' }, bulk, outdatedGb > 0 ? el('span', { class: 'muted small', text: `Az elavult modellek törlésével kb. ${gb(outdatedGb)} szabadul fel.` }) : null)]
+    : [el('p', { class: 'muted', text: st.reachable ? 'Még nincs letöltött modell.' : 'Előbb az Ollamának futnia kell (1. lépés).' })];
+
+  async function deleteModels(names) {
+    if (!names.length) return;
+    const current = models.find((m) => m.inUse && names.includes(m.name));
+    let switchTo = null;
+    if (current) {
+      const other = models.find((m) => !names.includes(m.name) && !m.successor) ?? models.find((m) => !names.includes(m.name));
+      if (!other) {
+        toast(`A program most a(z) ${current.name} modellt használja, és nincs másik letöltött modell, amire átállhatna. Előbb tölts le egy másikat.`, 'error', 9000);
+        return;
+      }
+      if (!confirm(`A program most a(z) ${current.name} modellt használja.\nÁtállítsam erre: ${other.name}, és utána törlöm?`)) return;
+      switchTo = other.name;
+    }
+    if (!confirm(`Törlöd ${names.length > 1 ? 'ezeket a modelleket' : 'ezt a modellt'}?\n\n${names.join('\n')}\n\nKb. ${gb(sizeOf(names))} szabadul fel. Később újra letölthető.`)) return;
+    try {
+      const r = await api('POST', '/ollama/delete', { models: names, switchTo, baseUrl: url.value });
+      if (r.deleted.length) toast(`Törölve: ${r.deleted.join(', ')} (${gb(r.freedGb)} felszabadult)${r.switchedTo ? `; a program mostantól: ${r.switchedTo}` : ''}`, 'ok', 8000);
+      if (r.errors.length) toast(r.errors.join(' '), 'error', 9000);
+    } catch (error) {
+      toast(error.body?.error ?? error.message, 'error', 9000);
+    }
+    if (switchTo) route(); else drawOllamaWizard(card, url.value);
+  }
+
+  async function upgradeModel(m) {
+    if (m.successorInstalled) {
+      await finishUpgrade(m.name, m.successor);
+      return;
+    }
+    if (!confirm(`Letöltöm az újabb modellt: ${m.successor}?\nA letöltés után a program átáll rá, és megkérdezem, töröljem-e a régit (${m.name}).`)) return;
+    try {
+      pendingUpgrade = { from: m.name, to: m.successor, wasInUse: m.inUse };
+      await api('POST', '/ollama/pull', { model: m.successor, baseUrl: url.value });
+      watchTask();
+    } catch (error) {
+      pendingUpgrade = null;
+      toast(error.body?.error ?? error.message, 'error', 8000);
+    }
+  }
+
+  async function finishUpgrade(from, to) {
+    if (!(await applyModel(to, true))) return;
+    toast(`A program mostantól ezt használja: ${to}`, 'ok', 6000);
+    if (confirm(`Az új modell (${to}) beállítva. Törlöd a régit (${from})?`)) {
+      try {
+        const r = await api('POST', '/ollama/delete', { models: [from], baseUrl: url.value });
+        if (r.deleted.length) toast(`Törölve: ${from} (${gb(r.freedGb)} felszabadult)`, 'ok', 6000);
+      } catch (error) {
+        toast(error.body?.error ?? error.message, 'error', 8000);
+      }
+    }
+    route();
+  }
 
   const configured = st.currentProvider === 'ollama' && st.currentModel && isInstalled(st.currentModel);
   add(card, el('div', { class: 'row' }, el('label', { class: 'field grow' }, el('span', { text: 'Az Ollama címe' }), url), recheck),
     step(1, 'Ollama (helyi AI szerver)', st.reachable, ...step1),
     taskArea,
-    step(2, 'Modell letöltése és kiválasztása', configured, ...step2),
-    configured ? el('p', { class: 'ok-text', text: `Kész: a program az Ollama ${st.currentModel} modelljével dolgozik. A Tesztkonzolban ki is próbálhatod.` }) : null);
+    step(2, 'Modell kiválasztása ehhez a géphez', configured, ...step2),
+    configured ? el('p', { class: 'ok-text', text: `Kész: a program az Ollama ${st.currentModel} modelljével dolgozik. A Tesztkonzolban ki is próbálhatod.` }) : null,
+    step(3, 'Letöltött modellek', false, ...step3));
 
   function drawTask(t) {
     taskArea.textContent = '';
@@ -842,6 +958,13 @@ async function drawOllamaWizard(card, baseUrlOverride) {
       if (!card.isConnected) return;
       drawTask(t);
       if (!t.running) {
+        if (!t.failed && pendingUpgrade && t.kind === 'pull' && t.model === pendingUpgrade.to) {
+          const u = pendingUpgrade;
+          pendingUpgrade = null;
+          await finishUpgrade(u.from, u.to);
+          return;
+        }
+        pendingUpgrade = null;
         if (!t.failed) { await drawOllamaWizard(card, url.value); drawTaskAfter(t); }
         return;
       }
@@ -941,6 +1064,115 @@ function outputRules(rules, folder) {
       el('thead', {}, el('tr', {}, ...['Szabály', 'Mód', 'Fájlnév', ''].map((h) => el('th', { text: h })))),
       el('tbody', {}, rows))),
     el('p', { class: 'muted small', text: 'Helyettesítők a fájlnévben: {yyyy} év, {MM} hónap, {dd} nap, {ruleId} a szabály azonosítója, {jobId} a feladat azonosítója (levelenkénti fájlhoz). Mappát nem tartalmazhat.' }));
+}
+
+// ---------- Teljesítmény ----------
+
+const SVG_NS = 'http://www.w3.org/2000/svg';
+function svg(tag, attrs = {}) {
+  const node = document.createElementNS(SVG_NS, tag);
+  for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, String(v));
+  return node;
+}
+
+/** Line chart of percentages over the last 15 minutes; series: [{ label, cls, values: [{ t, v }] }]. */
+function lineChart(series, windowMs = 15 * 60 * 1000) {
+  const W = 720, H = 190, L = 34, B = 20, T = 8;
+  const root = svg('svg', { viewBox: `0 0 ${W} ${H}`, class: 'chart', role: 'img', 'aria-label': 'Terhelés az elmúlt 15 percben' });
+  const now = Date.now();
+  const x = (t) => L + (W - L - 6) * (1 - Math.min(windowMs, now - t) / windowMs);
+  const y = (v) => T + (H - T - B) * (1 - v / 100);
+  for (const v of [0, 25, 50, 75, 100]) {
+    root.append(svg('line', { x1: L, x2: W - 6, y1: y(v), y2: y(v), class: 'grid' }));
+    const label = svg('text', { x: L - 6, y: y(v) + 4, class: 'axis', 'text-anchor': 'end' });
+    label.textContent = `${v}%`;
+    root.append(label);
+  }
+  for (const [mins, anchor] of [[15, 'start'], [10, 'middle'], [5, 'middle'], [0, 'end']]) {
+    const label = svg('text', { x: x(now - mins * 60000), y: H - 4, class: 'axis', 'text-anchor': anchor });
+    label.textContent = mins ? `-${mins} perc` : 'most';
+    root.append(label);
+  }
+  for (const s of series) {
+    const points = s.values.filter((p) => p.v !== null && p.v !== undefined && now - p.t <= windowMs).map((p) => `${x(p.t).toFixed(1)},${y(Math.max(0, Math.min(100, p.v))).toFixed(1)}`);
+    if (points.length > 1) root.append(svg('polyline', { points: points.join(' '), class: `line ${s.cls}` }));
+  }
+  return root;
+}
+
+async function renderPerf(container) {
+  const cards = el('div', { class: 'grid-cards' });
+  const warnings = el('div');
+  const chartBox = el('div', { class: 'card' });
+  const lower = el('div', { class: 'split-perf' });
+  container.append(
+    el('div', { class: 'page-header' }, el('div', {}, el('h1', { text: 'Teljesítmény' }),
+      el('p', { class: 'muted', text: 'A gép terhelése és az AI sebessége élőben: az elmúlt 15 perc, 2 másodpercenként frissül.' }))),
+    warnings, cards, chartBox, lower);
+
+  async function refresh() {
+    const r = await api('GET', '/perf');
+    const cur = r.current ?? {};
+    const memPct = cur.memoryUsedGb && cur.memoryTotalGb ? Math.round((cur.memoryUsedGb / cur.memoryTotalGb) * 100) : null;
+    const gpuDev = (r.hardware.gpus ?? []).find((g) => g.discrete) ?? (r.hardware.gpus ?? [])[0];
+    const loaded = r.ollama.loaded ?? [];
+    const PLACE = { cpu: 'processzoron fut', gpu: 'videókártyán fut', vegyes: 'részben videókártyán, részben processzoron' };
+    cards.textContent = '';
+    cards.append(
+      statCard('Processzor', (cur.cpu ?? 0) > 90 ? 'warn' : 'ok', cur.cpu !== null && cur.cpu !== undefined ? `${Math.round(cur.cpu)}%` : '–', `${r.hardware.cpuName ?? ''} · ${r.hardware.logicalCores} szál`),
+      statCard('Memória', (memPct ?? 0) > 90 ? 'warn' : 'ok', memPct !== null ? `${memPct}%` : '–',
+        cur.memoryTotalGb ? `${cur.memoryUsedGb.toLocaleString('hu-HU', { maximumFractionDigits: 1 })} / ${Math.round(cur.memoryTotalGb)} GB használatban` : ''),
+      statCard('Videókártya', 'ok', r.gpuMeasurable && cur.gpu !== null && cur.gpu !== undefined ? `${Math.round(cur.gpu)}%` : 'nem mérhető',
+        gpuDev ? `${gpuDev.name}${gpuDev.dedicatedVramGb ? ` · ${gpuDev.dedicatedVramGb} GB` : ''}${gpuDev.discrete ? '' : ' (integrált)'}` : 'nincs adat'),
+      statCard('AI modell', r.provider === 'ollama' && !r.ollama.reachable ? 'error' : 'ok',
+        loaded.length ? loaded.map((m) => m.name).join(', ') : (r.model || r.provider),
+        loaded.length ? loaded.map((m) => `${m.sizeGb} GB, ${PLACE[m.placement] ?? m.placement}`).join('; ')
+          : r.provider === 'ollama' ? (r.ollama.reachable ? 'nincs betöltve (a következő levélnél töltődik be)' : 'az Ollama nem érhető el') : r.provider));
+
+    warnings.textContent = '';
+    if (r.warnings.length) warnings.append(el('div', { class: 'banner warn' }, el('div', {}, el('strong', { text: 'Figyelem' }), messageList([], r.warnings))));
+
+    const t = (p) => new Date(p.t).getTime();
+    chartBox.textContent = '';
+    chartBox.append(el('div', { class: 'row' }, el('h2', { text: 'Terhelés' }), el('span', { class: 'spacer' }),
+      el('span', { class: 'legend cpu', text: 'Processzor' }), el('span', { class: 'legend mem', text: 'Memória' }),
+      r.gpuMeasurable ? el('span', { class: 'legend gpu', text: 'Videókártya' }) : null),
+      lineChart([
+        { cls: 'cpu', values: r.samples.map((p) => ({ t: t(p), v: p.cpu })) },
+        { cls: 'mem', values: r.samples.map((p) => ({ t: t(p), v: p.mem && p.memTotal ? (p.mem / p.memTotal) * 100 : null })) },
+        { cls: 'gpu', values: r.samples.map((p) => ({ t: t(p), v: p.gpu })) },
+      ]));
+
+    const st = r.stats;
+    const statLine = [
+      `Ma ${st.todayCount} levél`,
+      st.todayAvgSeconds ? `átlagosan ${st.todayAvgSeconds.toLocaleString('hu-HU')} mp/levél` : null,
+      st.avgTokensPerSecond ? `átlag ${st.avgTokensPerSecond.toLocaleString('hu-HU')} token/mp` : null,
+      st.slowest ? `leglassabb: ${st.slowest.seconds.toLocaleString('hu-HU')} mp (${st.slowest.subject ?? ''})` : null,
+    ].filter(Boolean).join(' · ');
+    lower.textContent = '';
+    lower.append(
+      el('div', { class: 'card' }, el('h2', { text: 'Feldolgozási sebesség' }), el('p', { class: 'muted small', text: statLine }),
+        r.jobs.length ? el('div', { class: 'table-wrap' }, el('table', {},
+          el('thead', {}, el('tr', {}, ...['Befejeződött', 'Tárgy', 'Modell', 'Idő', 'Token/mp', 'Tokenek'].map((h) => el('th', { text: h })))),
+          el('tbody', {}, r.jobs.map((j) => el('tr', {},
+            el('td', { class: 'nowrap', text: formatDate(j.finishedAt) }),
+            el('td', {}, el('span', { class: 'ellipsis', title: j.subject ?? '', text: j.subject ?? '' })),
+            el('td', { class: 'nowrap', text: j.model ?? '–' }),
+            el('td', { class: 'num nowrap', text: `${j.seconds.toLocaleString('hu-HU')} s` }),
+            el('td', { class: 'num', text: j.tokensPerSecond ? j.tokensPerSecond.toLocaleString('hu-HU') : '–' }),
+            el('td', { class: 'num nowrap', text: j.outputTokens ? `${j.promptTokens ?? '?'} + ${j.outputTokens}` : '–' })))))) : el('p', { class: 'empty', text: 'Még nincs feldolgozott levél.' })),
+      el('div', { class: 'card' }, el('h2', { text: 'A gép' }), el('dl', { class: 'meta' },
+        ...meta('Processzor', `${r.hardware.cpuName ?? '–'} (${r.hardware.logicalCores} szál)`),
+        ...meta('Memória', `${Math.round(r.hardware.totalRamGb)} GB`),
+        ...meta('Videókártya', (r.hardware.gpus ?? []).length ? r.hardware.gpus.map((g) => `${g.name}${g.dedicatedVramGb ? ` (${g.dedicatedVramGb} GB)` : ''}${g.discrete ? '' : ' – integrált'}`).join(', ') : '–'),
+        ...meta('Szabad hely', r.hardware.freeDiskGb ? `${Math.round(r.hardware.freeDiskGb)} GB` : '–'),
+        ...meta('Rendszer', r.hardware.os)),
+        el('p', { class: 'muted small', text: 'Melyik modell illik ehhez a géphez: Beállítások › AI telepítése és modellválasztás.' })));
+  }
+
+  await refresh();
+  timers.push(setInterval(() => refresh().catch(() => {}), 2000));
 }
 
 // ---------- Napló ----------

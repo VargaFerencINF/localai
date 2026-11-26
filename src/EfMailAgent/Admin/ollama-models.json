@@ -1,0 +1,37 @@
+{
+  "updated": "2026-11-26",
+  "note": "Checked against ollama.com/library (qwen3.5, gemma4) in November 2026. Updated with every release.",
+  "models": [
+    { "name": "qwen3.5:9b",  "title": "Qwen3.5 9B",  "family": "qwen3.5", "paramsB": 9,  "downloadGb": 6.6, "hungarian": 4, "current": true,
+      "description": "Kiegyensúlyozott: jó magyar szövegértés és megbízható JSON. A legtöbb gépre ezt ajánljuk." },
+    { "name": "qwen3.5:4b",  "title": "Qwen3.5 4B",  "family": "qwen3.5", "paramsB": 4,  "downloadGb": 3.3, "hungarian": 3, "current": true,
+      "description": "Gyors, kisebb gépekre; egyszerű, felsorolásos leveleknél elég lehet." },
+    { "name": "gemma4:e4b",  "title": "Gemma 4 E4B", "family": "gemma4",  "paramsB": 8,  "downloadGb": 6.6, "hungarian": 4, "current": true,
+      "description": "A Google modellje, a Qwen3.5 9B alternatívája; érdemes a Tesztkonzolban összevetni." },
+    { "name": "qwen3.5:27b", "title": "Qwen3.5 27B", "family": "qwen3.5", "paramsB": 27, "downloadGb": 17,  "hungarian": 5, "current": true,
+      "description": "A legpontosabb; videókártya vagy sok memória kell hozzá, processzoron lassú." },
+    { "name": "gemma4:26b",  "title": "Gemma 4 26B", "family": "gemma4",  "paramsB": 26, "downloadGb": 16,  "hungarian": 5, "current": true,
+      "description": "Nagy, pontos modell erős géphez (videókártyával)." },
+    { "name": "qwen3.5:2b",  "title": "Qwen3.5 2B",  "family": "qwen3.5", "paramsB": 2,  "downloadGb": 2.7, "hungarian": 2, "current": true,
+      "description": "Nagyon kicsi és gyors, gyenge gépekre; összetettebb leveleknél pontatlanabb." }
+  ],
+  "successors": [
+    { "pattern": "qwen3:0.6b",  "successor": "qwen3.5:2b" },
+    { "pattern": "qwen3:1.7b",  "successor": "qwen3.5:2b" },
+    { "pattern": "qwen3:4b",    "successor": "qwen3.5:4b" },
+    { "pattern": "qwen3:8b",    "successor": "qwen3.5:9b" },
+    { "pattern": "qwen3:14b",   "successor": "qwen3.5:9b" },
+    { "pattern": "qwen3:30b*",  "successor": "qwen3.5:27b" },
+    { "pattern": "qwen3:32b",   "successor": "qwen3.5:27b" },
+    { "pattern": "qwen3:latest","successor": "qwen3.5:9b" },
+    { "pattern": "qwen2.5:*",   "successor": "qwen3.5:9b" },
+    { "pattern": "qwen2:*",     "successor": "qwen3.5:9b" },
+    { "pattern": "gemma3:*",    "successor": "gemma4:e4b" },
+    { "pattern": "gemma2:*",    "successor": "gemma4:e4b" },
+    { "pattern": "llama3.1:*",  "successor": "qwen3.5:9b" },
+    { "pattern": "llama3.2:*",  "successor": "qwen3.5:4b" },
+    { "pattern": "llama3:*",    "successor": "qwen3.5:9b" },
+    { "pattern": "mistral:*",   "successor": "qwen3.5:9b" },
+    { "pattern": "phi3:*",      "successor": "qwen3.5:4b" }
+  ]
+}

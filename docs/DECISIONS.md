@@ -732,3 +732,36 @@ The curated list of 1.2.0 still offered the Qwen3 names. Checked against the Oll
 2B/4B/9B/27B, Gemma 4 E4B with their download sizes); recommendation by memory: 14 GB and more qwen3.5:9b, from 7 GB
 qwen3.5:4b, below qwen3.5:2b. The 27B model is listed but never recommended automatically (too slow on a processor).
 
+## Version 1.3.0
+
+### D-1101 Model catalog shipped with the program
+"Always the newest models for this machine": ollama.com has no stable public API to list and rank models, and
+scraping it would break silently. The program ships `Admin/ollama-models.json` (name, size, parameters, estimated
+Hungarian quality, current generation, successors of older models), embedded in the exe and updated with every
+release. The Hungarian quality score is our estimate and is shown as such. Automatic catalog updates without a
+release stay an open idea (FEJLESZTESI_OTLETEK.md).
+
+### D-1102 Fit and speed estimate
+Fit: model needs about 1.2 × download size + 1 GB; fits on the graphics card if that fits its dedicated memory,
+otherwise "fits" up to 60 % and "tight" up to 85 % of the physical memory. Speed: generation tokens/s ≈ effective
+memory bandwidth / model size (50 GB/s processor, 250 GB/s dedicated card; prompt ≈ 12× resp. 30× faster), one email
+= 3000 prompt + 600 answer tokens. Measured values win: the quick test (Ollama's own eval/prompt_eval timings, saved
+in `data/model-benchmarks.json`) and the median speed of real jobs; one measured model also calibrates the bandwidth
+for the others. Tags: "ajánlott" = best Hungarian quality within ~4 minutes per email, "gyorsabb", "pontosabb".
+Integrated graphics (Intel UHD/Iris/Arc Graphics, AMD Radeon Graphics) count as no card.
+
+### D-1103 Model management
+Delete is independent of updating and supports several models at once (Ollama `DELETE /api/delete`). The model in
+use is refused unless a switch target is given; the UI picks another downloaded model and asks first. Outdated =
+listed under a successor pattern in the catalog; "Frissítés" downloads the successor, switches the settings and
+offers to delete the old one.
+
+### D-1104 Performance page and LLM usage per job
+A background sampler (2 s, 15 minutes kept) reads processor and memory load (Windows: GetSystemTimes,
+GlobalMemoryStatusEx; Linux: /proc) and graphics load from the Windows "GPU Engine" performance counters (PDH; null
+where unavailable, NPU not measured), and asks Ollama `/api/ps` every 6 s which model is loaded and how much of it is
+on the graphics card. Hardware facts come from the registry (processor name, display adapters with dedicated
+memory). Jobs store prompt/output tokens, generation tokens/s and the model (migration 3). Warnings: processor above
+90 % for a minute, under 10 % free memory, model larger than the machine, model on the processor although a card
+exists, partly offloaded model, average job time over 5 minutes.
+

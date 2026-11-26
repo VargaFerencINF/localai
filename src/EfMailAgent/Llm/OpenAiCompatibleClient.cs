@@ -37,8 +37,10 @@ public sealed class OpenAiCompatibleClient(HttpClient httpClient, string baseUrl
         var (body, duration) = await PostJsonAsync($"{BaseUrl}/v1/chat/completions", payload, request.Timeout, cancellationToken);
         var content = RequireString(body["choices"]?[0]?["message"]?["content"], "choices[0].message.content");
         var usage = body["usage"];
+        var completion = (int?)usage?["completion_tokens"]?.GetValue<long>();
+        double? speed = completion is > 0 && duration.TotalSeconds > 0 ? completion.Value / duration.TotalSeconds : null; // includes prompt time
         return new LlmResponse(content, duration, body["model"]?.GetValue<string>(),
-            (int?)usage?["prompt_tokens"]?.GetValue<long>(), (int?)usage?["completion_tokens"]?.GetValue<long>());
+            (int?)usage?["prompt_tokens"]?.GetValue<long>(), completion, speed);
     }
 
     public override async Task<LlmHealth> CheckHealthAsync(CancellationToken cancellationToken)

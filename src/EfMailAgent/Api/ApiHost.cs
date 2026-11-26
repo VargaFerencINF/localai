@@ -49,6 +49,9 @@ public static class ApiHost
         builder.Services.AddSingleton<Admin.LoginCodeRegistry>();
         builder.Services.AddSingleton<Admin.RuleFileService>();
         builder.Services.AddSingleton<Admin.SettingsService>();
+        builder.Services.AddSingleton<Hosting.ISystemMetrics, Hosting.SystemMetrics>();
+        builder.Services.AddSingleton<Hosting.PerformanceMonitor>();
+        builder.Services.AddHostedService(sp => sp.GetRequiredService<Hosting.PerformanceMonitor>());
         builder.Services.AddSingleton(new Admin.OllamaSetupOptions());
         builder.Services.AddSingleton<Admin.IOllamaPlatform>(_ => OperatingSystem.IsWindows() ? new Admin.WindowsOllamaPlatform() : new Admin.UnsupportedOllamaPlatform());
         builder.Services.AddSingleton<Admin.OllamaSetupService>();

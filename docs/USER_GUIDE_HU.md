@@ -114,6 +114,17 @@ Google Chrome, végső esetben az alapértelmezett böngésző nyílik meg. A fe
    egy 5 GB-os modell a hálózattól függően 5–30 perc), végül **Használat ezzel a modellel**: a program azonnal erre a
    modellre áll át. A **Tesztkonzolban** ki is próbálhatod.
 
+**Modellajánlás ehhez a géphez.** A modell-lista minden sorában látszik, hogy a modell **elfér-e** a gépen, kb.
+**mennyi idő alatt dolgoz fel egy levelet**, és mennyire jó magyarul (★, becslés). A jelölések: *ajánlott ehhez a
+géphez* (a legjobb magyar minőség elfogadható, kb. 4 percen belüli idővel), *gyorsabb*, *pontosabb*. A letöltött
+modelleknél a **Gyors próba** gomb megméri a valós sebességet; utána a becslés „(mért)”. A program a valódi
+feldolgozások sebességét is figyelembe veszi.
+
+**Letöltött modellek** (3. lépés): itt bármelyik modell **törölhető, frissítés nélkül is** (Törlés gomb, vagy többet
+kijelölve: *Kijelöltek törlése*). Ha éppen a használt modellt törölnéd, a program felajánlja, hogy előbb átáll egy
+másikra. Az **elavult** jelölésű modelleknek van újabb változata: a **Frissítés** letölti az újat, átállítja rá a
+programot, és megkérdezi, törölje-e a régit. A sor alatt látszik, mennyi hely szabadul fel.
+
 **2. Thunderbird bővítmény** – a Beállítások oldalon lejjebb: az állapot (talált Thunderbird, telepített verzió) és a
 **Telepítés a Thunderbirdbe** gomb. Egy kattintással telepíti a bővítményt a gépen lévő Thunderbirdbe, a szerver
 címét és a tokent is beállítja. Ha a program nem rendszergazdaként fut, a Windows engedélyt kér (válaszd az Igen
@@ -339,6 +350,19 @@ kattintva látod a sorokat és az okot, a **Újrafuttatás** gombbal újra feldo
 
 Naponta egyszer (éjfél után) a napló egy összesítő sort ír: „Napi összesítő (2026-11-26): feldolgozva 42 (kész 30,
 ellenőrzendő 11, hiba 1), átlagos feldolgozási idő 38,2 mp, jelenleg a sorban 0”.
+
+## 7.5 Teljesítmény oldal
+
+A bal oldali **Teljesítmény** menüpont élőben mutatja:
+
+- a **processzor**, a **memória** és, ahol a Windows méri, a **videókártya** terhelését az elmúlt 15 percben (grafikon);
+- az **AI modellt**: melyik modell van betöltve, mekkora, és **processzoron vagy videókártyán fut**;
+- a **feldolgozási sebességet**: levelenként az időt, a token/mp sebességet és a tokenek számát; a mai átlagot és a
+  leglassabb levelet;
+- **figyelmeztetést**, ha a processzor tartósan túlterhelt, kevés a szabad memória, a modell túl nagy a géphez, vagy a
+  modell processzoron fut, pedig van videókártya.
+
+Az NPU (pl. Intel AI Boost) terhelését a program nem méri; az Ollama jelenleg nem is használja.
 
 ## 8. Hibaelhárítás
 

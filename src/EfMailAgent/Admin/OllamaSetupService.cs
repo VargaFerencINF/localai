@@ -11,9 +11,6 @@ using Microsoft.Extensions.Logging;
 
 namespace EfMailAgent.Admin;
 
-/// <summary>A model offered by the setup wizard. Sizes are approximate (download / memory needed).</summary>
-public sealed record OllamaModelChoice(string Name, string Title, string Description, double DownloadGb, int MinRamGb);
-
 /// <summary>Progress of the one background task of the wizard (Ollama install or a model download).</summary>
 public sealed record OllamaTaskState(string Kind, string Phase, string Message, double? Percent, bool Running, bool Failed, string? Model);
 
@@ -100,17 +97,9 @@ public sealed class OllamaSetupOptions
 /// </summary>
 public sealed partial class OllamaSetupService(
     EffectiveSettings settings, SettingsService settingsService, RuntimeInfo runtime, IOllamaPlatform platform,
-    OllamaSetupOptions options, ILogger<OllamaSetupService> logger)
+    OllamaSetupOptions options, ILogger<OllamaSetupService> logger, ISystemMetrics metrics, Jobs.JobQueue queue)
 {
-    // Checked against the Ollama library (ollama.com/library/qwen3.5, /gemma4) in November 2026; any other name can be typed in.
-    public static readonly IReadOnlyList<OllamaModelChoice> Choices =
-    [
-        new("qwen3.5:4b", "Qwen3.5 4B", "Gyors, kisebb gépekre (processzoron is jól használható). Egyszerűbb, felsorolásos leveleknél elég lehet.", 3.3, 8),
-        new("qwen3.5:9b", "Qwen3.5 9B", "Kiegyensúlyozott: jó magyar szövegértés és megbízható JSON. A legtöbb esetben ezt ajánljuk.", 6.6, 16),
-        new("gemma4:e4b", "Gemma 4 E4B", "A Google modellje, a Qwen3.5 9B alternatívája; érdemes a Tesztkonzolban összevetni.", 6.6, 16),
-        new("qwen3.5:27b", "Qwen3.5 27B", "A legpontosabb, de nagyon lassú videókártya nélkül; sok memóriát igényel.", 17, 32),
-        new("qwen3.5:2b", "Qwen3.5 2B", "Nagyon kicsi és gyors, gyenge gépekre; összetettebb leveleknél pontatlanabb.", 2.7, 4),
-    ];
+    public const string BenchmarkFileName = "model-benchmarks.json";
 
     private readonly object _lock = new();
     private OllamaTaskState _task = new("", "idle", "", null, false, false, null);
@@ -119,6 +108,8 @@ public sealed partial class OllamaSetupService(
     private static partial Regex ModelNameRegex();
 
     public OllamaTaskState CurrentTask => _task;
+
+    public ModelCatalog Catalog { get; init; } = ModelCatalog.BuiltIn;
 
     public string? CannotInstallReason =>
         !options.InstallSupported ? "Az Ollama automatikus telepítése csak Windowson érhető el."
@@ -130,35 +121,48 @@ public sealed partial class OllamaSetupService(
             ? settings.Settings.Llm.BaseUrl.TrimEnd('/')
             : OllamaSetupOptions.DefaultBaseUrl;
 
-    public static int RecommendedRamGb(long totalBytes) => (int)Math.Round(totalBytes / 1024d / 1024 / 1024);
-
-    // The 27B model is never recommended automatically: on a processor it is too slow for daily use.
-    public static string Recommend(int ramGb) => ramGb >= 14 ? "qwen3.5:9b" : ramGb >= 7 ? "qwen3.5:4b" : "qwen3.5:2b";
+    private string CurrentOllamaModel => settings.Settings.Llm.Provider == LlmProviders.Ollama ? settings.Settings.Llm.Model : "";
 
     public async Task<object> StatusAsync(string? baseUrl, CancellationToken cancellationToken)
     {
         var url = NormalizeBaseUrl(baseUrl);
         string? version = null;
         string? error = null;
-        IReadOnlyList<object> models = [];
+        List<JsonObject> installed = [];
         using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
         try
         {
             var v = await http.GetFromJsonAsync<JsonObject>($"{url}/api/version", cancellationToken);
             version = v?["version"]?.GetValue<string>() ?? "?";
             var tags = await http.GetFromJsonAsync<JsonObject>($"{url}/api/tags", cancellationToken);
-            models = (tags?["models"] as JsonArray ?? []).OfType<JsonObject>().Select(m => (object)new
-            {
-                name = m["name"]?.GetValue<string>() ?? m["model"]?.GetValue<string>(),
-                sizeGb = m["size"] is JsonValue size && size.TryGetValue<long>(out var bytes) ? Math.Round(bytes / 1e9, 1) : (double?)null,
-            }).ToList();
+            installed = (tags?["models"] as JsonArray ?? []).OfType<JsonObject>().ToList();
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException or InvalidOperationException)
         {
             error = ex is TaskCanceledException ? "időtúllépés" : ex.Message;
         }
 
-        var ramGb = RecommendedRamGb(GC.GetGCMemoryInfo().TotalAvailableMemoryBytes);
+        var current = CurrentOllamaModel;
+        var models = installed.Select(m =>
+        {
+            var name = m["name"]?.GetValue<string>() ?? m["model"]?.GetValue<string>() ?? "";
+            var size = m["size"] is JsonValue sv && sv.TryGetValue<long>(out var bytes) ? Math.Round(bytes / 1e9, 1) : (double?)null;
+            var successor = Catalog.SuccessorOf(name);
+            return new
+            {
+                name,
+                sizeGb = size,
+                modifiedAt = m["modified_at"]?.GetValue<string>(),
+                inUse = SameModel(name, current),
+                successor,
+                successorInstalled = successor is not null && installed.Any(o => SameModel(o["name"]?.GetValue<string>() ?? "", successor)),
+                catalog = Catalog.Find(name) is not null,
+            };
+        }).OrderBy(m => m.successor is null ? 1 : 0).ThenBy(m => m.name).ToList();
+
+        var hardware = metrics.Hardware();
+        var measured = MeasuredSpeeds();
+        var advice = ModelAdvisor.Advise(Catalog, hardware, measured);
         return new
         {
             baseUrl = url,
@@ -170,13 +174,174 @@ public sealed partial class OllamaSetupService(
             canInstall = CannotInstallReason is null,
             cannotInstallReason = CannotInstallReason,
             downloadPage = "https://ollama.com/download/windows",
-            ramGb,
-            recommended = Recommend(ramGb),
-            choices = Choices,
+            hardware,
+            ramGb = (int)Math.Round(hardware.TotalRamGb),
+            catalogUpdated = Catalog.Updated,
+            advice,
+            recommended = advice.FirstOrDefault(a => a.Tags.Contains("ajanlott"))?.Name,
             currentProvider = settings.Settings.Llm.Provider,
             currentModel = settings.Settings.Llm.Model,
             task = _task,
         };
+    }
+
+    public static bool SameModel(string a, string b)
+    {
+        static string N(string x) => x.Contains(':') ? x.Trim() : x.Trim() + ":latest";
+        return a.Length > 0 && b.Length > 0 && N(a).Equals(N(b), StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>Speeds measured on this machine: quick tests (saved) and the median of real jobs per model.</summary>
+    public IReadOnlyDictionary<string, ModelSpeed> MeasuredSpeeds()
+    {
+        var result = new Dictionary<string, ModelSpeed>(StringComparer.OrdinalIgnoreCase);
+        foreach (var group in queue.RecentLlmUsage(200).Where(r => r.Model is not null && r.TokensPerSecond is > 0).GroupBy(r => r.Model!))
+        {
+            var speeds = group.Select(r => r.TokensPerSecond!.Value).Order().ToList();
+            result[group.Key] = new ModelSpeed(Math.Round(speeds[speeds.Count / 2], 1), null, $"{speeds.Count} feldolgozott levél alapján");
+        }
+        foreach (var (model, speed) in LoadBenchmarks())
+            result[model] = speed; // a quick test also knows the prompt speed
+        return result;
+    }
+
+    private string BenchmarkPath => Path.Combine(settings.DataDir, BenchmarkFileName);
+
+    private Dictionary<string, ModelSpeed> LoadBenchmarks()
+    {
+        try
+        {
+            return File.Exists(BenchmarkPath)
+                ? JsonSerializer.Deserialize<Dictionary<string, ModelSpeed>>(File.ReadAllText(BenchmarkPath)) ?? []
+                : [];
+        }
+        catch (Exception ex) when (ex is JsonException or IOException)
+        {
+            return [];
+        }
+    }
+
+    /// <summary>
+    /// "Gyors próba": a short Hungarian request to the model; measures prompt and generation speed (from Ollama's own
+    /// timings), saves them, and estimates the time of one email.
+    /// </summary>
+    public async Task<object> BenchmarkAsync(string? model, string? baseUrl, CancellationToken cancellationToken)
+    {
+        model = model?.Trim() ?? "";
+        if (!ModelNameRegex().IsMatch(model))
+            throw new AdminRequestException("Érvénytelen modellnév.", 400);
+        var url = NormalizeBaseUrl(baseUrl);
+        var text = string.Concat(Enumerable.Repeat(
+            "Kedves Péter! A tavaszi szezonra az alábbiakat szeretnénk előrendelni: feeder bot 3,6 m 10 db, monofil zsinór 0,25 mm 40 tekercs, "
+            + "horog 12-es 25 csomag, etetőanyag 3 karton. Szállítás március elején. ", 8));
+        var payload = new JsonObject
+        {
+            ["model"] = model,
+            ["stream"] = false,
+            ["think"] = false,
+            ["messages"] = new JsonArray(
+                new JsonObject { ["role"] = "user", ["content"] = "Sorold fel röviden a rendelt tételeket mennyiséggel:\n\n" + text }),
+            ["options"] = new JsonObject { ["temperature"] = 0, ["num_predict"] = 120 },
+        };
+        using var http = new HttpClient { Timeout = TimeSpan.FromMinutes(10) };
+        JsonObject body;
+        try
+        {
+            using var response = await http.PostAsJsonAsync($"{url}/api/chat", payload, cancellationToken);
+            body = (await response.Content.ReadFromJsonAsync<JsonObject>(cancellationToken))!;
+            if (!response.IsSuccessStatusCode)
+                throw new AdminRequestException($"Az Ollama hibát jelzett: {body["error"]?.GetValue<string>() ?? ((int)response.StatusCode).ToString(CultureInfo.InvariantCulture)}", 502);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException)
+        {
+            throw new AdminRequestException($"Az Ollama nem érhető el ({url}): {ex.Message}", 502);
+        }
+
+        double? Rate(string count, string duration) =>
+            body[count]?.GetValue<long>() is long c && c > 0 && body[duration]?.GetValue<long>() is long d && d > 0 ? Math.Round(c / (d / 1e9), 1) : null;
+        var gen = Rate("eval_count", "eval_duration") ?? throw new AdminRequestException("Az Ollama nem adott vissza időmérést.", 502);
+        var prompt = Rate("prompt_eval_count", "prompt_eval_duration");
+        var speed = new ModelSpeed(gen, prompt, "Gyors próba " + DateTimeOffset.Now.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture));
+        var all = LoadBenchmarks();
+        all[model] = speed;
+        Directory.CreateDirectory(settings.DataDir);
+        File.WriteAllText(BenchmarkPath, JsonSerializer.Serialize(all, new JsonSerializerOptions { WriteIndented = true }));
+        var seconds = (int)Math.Round(ModelAdvisor.PromptTokens / (prompt ?? gen * 12) + ModelAdvisor.OutputTokens / gen);
+        logger.LogInformation("Gyors próba: {Model}, {Gen} token/mp (prompt: {Prompt} token/mp), becsült {Seconds} mp/levél", model, gen, prompt, seconds);
+        return new { model, generationTokPerSec = gen, promptTokPerSec = prompt, secondsPerEmail = seconds, loadSeconds = Rate2(body["load_duration"]) };
+
+        static double? Rate2(JsonNode? ns) => ns?.GetValue<long>() is long v ? Math.Round(v / 1e9, 1) : null;
+    }
+
+    public sealed record DeleteResult(IReadOnlyList<string> Deleted, IReadOnlyList<string> Errors, double FreedGb, string? SwitchedTo);
+
+    /// <summary>
+    /// Deletes downloaded models (independently of updating them). The model the program uses is only deleted together
+    /// with <paramref name="switchTo"/>, another downloaded model the settings are switched to first.
+    /// </summary>
+    public async Task<DeleteResult> DeleteAsync(IReadOnlyList<string>? models, string? switchTo, string? baseUrl, CancellationToken cancellationToken)
+    {
+        var names = (models ?? []).Select(m => m.Trim()).Where(m => m.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        if (names.Count == 0)
+            throw new AdminRequestException("Válassz ki legalább egy modellt a törléshez.", 400);
+        if (names.FirstOrDefault(n => !ModelNameRegex().IsMatch(n)) is { } bad)
+            throw new AdminRequestException($"Érvénytelen modellnév: {bad}", 400);
+        var url = NormalizeBaseUrl(baseUrl);
+
+        string? switched = null;
+        var current = CurrentOllamaModel;
+        if (names.Any(n => SameModel(n, current)))
+        {
+            if (string.IsNullOrWhiteSpace(switchTo))
+                throw new AdminRequestException($"A program most ezt a modellt használja: {current}. Előbb válassz másik modellt, amire átálljon, vagy ne töröld.", 409);
+            if (names.Any(n => SameModel(n, switchTo)))
+                throw new AdminRequestException("Arra a modellre nem lehet átállni, amit éppen törölsz.", 400);
+            var applied = Apply(switchTo, url);
+            if (!applied.Saved)
+                throw new AdminRequestException(string.Join(" ", applied.Errors), 422);
+            switched = switchTo.Trim();
+        }
+
+        using var http = new HttpClient { Timeout = TimeSpan.FromMinutes(2) };
+        var sizes = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+        try
+        {
+            var tags = await http.GetFromJsonAsync<JsonObject>($"{url}/api/tags", cancellationToken);
+            foreach (var m in (tags?["models"] as JsonArray ?? []).OfType<JsonObject>())
+                if (m["name"]?.GetValue<string>() is { } n && m["size"] is JsonValue sv && sv.TryGetValue<long>(out var b))
+                    sizes[n] = b / 1e9;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException)
+        {
+            throw new AdminRequestException($"Az Ollama nem érhető el ({url}): {ex.Message}", 502);
+        }
+
+        var deleted = new List<string>();
+        var errors = new List<string>();
+        double freed = 0;
+        foreach (var name in names)
+        {
+            try
+            {
+                using var request = new HttpRequestMessage(HttpMethod.Delete, $"{url}/api/delete") { Content = JsonContent.Create(new { model = name, name }) };
+                using var response = await http.SendAsync(request, cancellationToken);
+                if (response.IsSuccessStatusCode)
+                {
+                    deleted.Add(name);
+                    freed += sizes.GetValueOrDefault(name);
+                }
+                else
+                {
+                    errors.Add($"{name}: {TryError(await response.Content.ReadAsStringAsync(cancellationToken)) ?? $"HTTP {(int)response.StatusCode}"}");
+                }
+            }
+            catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+            {
+                errors.Add($"{name}: {ex.Message}");
+            }
+        }
+        logger.LogInformation("Modellek törölve: {Deleted}{Errors}", string.Join(", ", deleted), errors.Count > 0 ? "; hibák: " + string.Join("; ", errors) : "");
+        return new DeleteResult(deleted, errors, Math.Round(freed, 1), switched);
     }
 
     public void StartInstall()

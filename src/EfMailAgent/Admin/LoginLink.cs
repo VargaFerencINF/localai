@@ -18,7 +18,7 @@ public static class LoginLink
     /// <summary>Pages a link may open (the hash routes of the admin UI).</summary>
     public static readonly IReadOnlySet<string> Pages = new HashSet<string>(StringComparer.Ordinal)
     {
-        "attekintes", "szabalyok", "tesztkonzol", "beallitasok", "naplo",
+        "attekintes", "szabalyok", "tesztkonzol", "teljesitmeny", "beallitasok", "naplo",
     };
 
     public static string CreateCode(string token, DateTimeOffset now)

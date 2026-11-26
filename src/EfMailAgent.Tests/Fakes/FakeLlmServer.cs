@@ -47,6 +47,11 @@ public sealed class FakeLlmServer : IAsyncDisposable
         """{"status":"success"}""",
     ];
 
+    public ConcurrentQueue<string> Deleted { get; } = new();
+
+    /// <summary>Models reported as loaded by /api/ps.</summary>
+    public IReadOnlyList<string> Loaded { get; set; } = [];
+
     /// <summary>Served at /download/OllamaSetup.exe.</summary>
     public byte[] SetupBytes { get; set; } = new byte[300_000];
 
@@ -60,7 +65,18 @@ public sealed class FakeLlmServer : IAsyncDisposable
 
         app.MapPost("/api/chat", (Delegate)((HttpContext context) => server.ChatAsync(context, ollama: true)));
         app.MapPost("/v1/chat/completions", (Delegate)((HttpContext context) => server.ChatAsync(context, ollama: false)));
-        app.MapGet("/api/tags", () => Results.Json(new { models = server.Models.Select(m => new { name = m, model = m }) }));
+        app.MapGet("/api/tags", () => Results.Json(new { models = server.Models.Select(m => new { name = m, model = m, size = 5_000_000_000L, modified_at = "2026-05-01T10:00:00Z" }) }));
+        app.MapDelete("/api/delete", async (HttpContext context) =>
+        {
+            var body = (await JsonNode.ParseAsync(context.Request.Body))!.AsObject();
+            var model = body["model"]?.GetValue<string>() ?? body["name"]?.GetValue<string>();
+            if (model is null || !server.Models.Contains(model))
+                return Results.Json(new { error = $"model '{model}' not found" }, statusCode: 404);
+            server.Models = server.Models.Where(m => m != model).ToList();
+            server.Deleted.Enqueue(model);
+            return Results.Ok();
+        });
+        app.MapGet("/api/ps", () => Results.Json(new { models = server.Loaded.Select(m => new { name = m, model = m, size = 6_000_000_000L, size_vram = 0L }) }));
         app.MapGet("/api/version", () => Results.Json(new { version = "0.12.3" }));
         app.MapPost("/api/pull", async (HttpContext context) =>
         {
@@ -109,7 +125,10 @@ public sealed class FakeLlmServer : IAsyncDisposable
                     message = new { role = "assistant", content = reply.Content },
                     done = true,
                     prompt_eval_count = 100,
+                    prompt_eval_duration = 1_000_000_000L, // 100 tokens/s
                     eval_count = 50,
+                    eval_duration = 5_000_000_000L,        // 10 tokens/s
+                    load_duration = 500_000_000L,
                 })
                 : Results.Json(new
                 {

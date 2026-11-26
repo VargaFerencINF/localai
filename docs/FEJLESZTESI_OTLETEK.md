@@ -7,7 +7,11 @@ egyeztetjük a sorrendet. Állapot: `ötlet` → `tervezve` → `kész (verzió)
 
 ## 1. Gépre szabott, naprakész modellajánló *(a legfontosabb)*
 
-**Állapot:** ötlet · **Felvéve:** 2026-11-26
+> Megvalósítva az 1.3.0-ban: gépfelmérés, a programmal szállított modell-katalógus (kiadásonként frissítve),
+> illeszkedés + becsült idő/levél + magyar minőség, „Gyors próba” valós méréssel. Nyitott: a katalógus automatikus
+> frissítése kiadás nélkül.
+
+**Állapot:** kész (1.3.0) · **Felvéve:** 2026-11-26
 
 **Kérés:** a modellválasztó mindig a **legújabb** modellek közül ajánljon, **arra a gépre szabva**, amelyre a
 programot telepítjük.
@@ -37,7 +41,7 @@ programot telepítjük.
 
 ## 2. Modellek kezelése: törlés, elavult modellek, új verzió
 
-**Állapot:** ötlet · **Felvéve:** 2026-11-26
+**Állapot:** kész (1.3.0) · **Felvéve:** 2026-11-26
 
 **Kérés:** a gépen már vannak régi modellek, amelyek lehet, hogy elavultak. Lehessen őket **törölni** az
 alkalmazásból, és a program próbálja megkeresni az **új verziójukat**.
@@ -65,7 +69,7 @@ akarok lecserélni, csak törölni, akkor egy gombbal törölhessem, és a progr
 
 ## 3. Erőforrás-figyelő felület (gépterhelés, AI-terhelés)
 
-**Állapot:** ötlet · **Felvéve:** 2026-11-26
+**Állapot:** kész (1.3.0) · **Felvéve:** 2026-11-26
 
 **Kérés:** legyen egy felület, amely **vizuálisan mutatja a gép fogyasztását**, és hogy **mennyire hajtja meg az AI
 modell** a gépet.

@@ -32,7 +32,26 @@ public sealed record LlmRequest
     public bool IsRepair => Messages.Count > 2;
 }
 
-public sealed record LlmResponse(string Content, TimeSpan Duration, string? Model = null, int? PromptTokens = null, int? CompletionTokens = null);
+public sealed record LlmResponse(string Content, TimeSpan Duration, string? Model = null, int? PromptTokens = null, int? CompletionTokens = null,
+    double? TokensPerSecond = null);
+
+/// <summary>Token counts and generation speed of the LLM call(s) of one job (Teljesítmény page, job details).</summary>
+public sealed record LlmUsage(int? PromptTokens, int? OutputTokens, double? TokensPerSecond, string? Model)
+{
+    /// <summary>Sums the calls; the speed is weighted by the output tokens of each call.</summary>
+    public static LlmUsage? From(params LlmResponse?[] responses)
+    {
+        var calls = responses.OfType<LlmResponse>().ToList();
+        if (calls.Count == 0)
+            return null;
+        int? Sum(Func<LlmResponse, int?> pick) => calls.Any(c => pick(c) is not null) ? calls.Sum(c => pick(c) ?? 0) : null;
+        var timed = calls.Where(c => c.CompletionTokens is > 0 && c.TokensPerSecond is > 0).ToList();
+        double? speed = timed.Count == 0 ? null
+            : timed.Sum(c => (double)c.CompletionTokens!.Value) / timed.Sum(c => c.CompletionTokens!.Value / c.TokensPerSecond!.Value);
+        return new LlmUsage(Sum(c => c.PromptTokens), Sum(c => c.CompletionTokens), speed is null ? null : Math.Round(speed.Value, 1),
+            calls.Select(c => c.Model).LastOrDefault(m => m is not null));
+    }
+}
 
 public sealed record LlmHealth(bool Reachable, string Provider, string? Error, IReadOnlyList<string> Models, TimeSpan Duration);
 

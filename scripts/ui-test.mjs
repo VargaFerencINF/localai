@@ -161,7 +161,15 @@ function startFakeOllama() {
     let body = '';
     for await (const chunk of req) body += chunk;
     if (req.url === '/api/version') return json(200, { version: '0.12.3' });
-    if (req.url === '/api/tags') return json(200, { models: models.map((m) => ({ name: m, model: m, size: 2_000_000_000 })) });
+    if (req.url === '/api/tags') return json(200, { models: models.map((m) => ({ name: m, model: m, size: 2_000_000_000, modified_at: '2025-06-01T10:00:00Z' })) });
+    if (req.url === '/api/ps') return json(200, { models: models.slice(0, 1).map((m) => ({ name: m, model: m, size: 2_000_000_000, size_vram: 0 })) });
+    if (req.url === '/api/delete' && req.method === 'DELETE') {
+      const { model } = JSON.parse(body || '{}');
+      const i = models.indexOf(model);
+      if (i < 0) return json(404, { error: `model '${model}' not found` });
+      models.splice(i, 1);
+      return json(200, {});
+    }
     if (req.url === '/api/pull') {
       const { model } = JSON.parse(body || '{}');
       res.writeHead(200, { 'Content-Type': 'application/x-ndjson' });
@@ -176,7 +184,8 @@ function startFakeOllama() {
       if (!models.includes(model)) models.push(model);
       return res.end();
     }
-    if (req.url === '/api/chat') return json(200, { message: { role: 'assistant', content: '{"rows": []}' }, done: true });
+    if (req.url === '/api/chat') return json(200, { message: { role: 'assistant', content: '{"rows": []}' }, done: true,
+      prompt_eval_count: 300, prompt_eval_duration: 3_000_000_000, eval_count: 120, eval_duration: 12_000_000_000 });
     json(404, { error: 'not found' });
   });
   return new Promise((resolve) => srv.listen(0, '127.0.0.1', () => resolve({ srv, url: `http://127.0.0.1:${srv.address().port}` })));
@@ -590,7 +599,46 @@ try {
     await until(async () => (await page.textContent('.grid-cards')).includes('qwen3.5:4b'), 'az Áttekintés nem az új modellt mutatja');
   });
 
-  await section('10. Napló');
+  await check('gépre szabott ajánlás: a gép adatai, illeszkedés és becsült idő minden modellnél', async () => {
+    await go(page, '#/beallitasok');
+    await page.waitForSelector('#ollama-wizard #hw-summary');
+    assert((await page.textContent('#hw-summary')).includes('GB memória'), 'nincs gépösszefoglaló');
+    const row = page.locator('#ollama-wizard tr:has(strong:text-is("Qwen3.5 9B"))');
+    const text = await row.textContent();
+    assert(/elfér|szűkös|nem fér el/.test(text) && /(mp|perc)\/levél|nem fér el/.test(text), `nincs illeszkedés / becsült idő: ${text}`);
+  });
+  await check('„Gyors próba”: valós sebességmérés, utána a becslés „mért” lesz', async () => {
+    const row = page.locator('#ollama-wizard tr', { hasText: 'Qwen3.5 4B' });
+    await row.locator('button:has-text("Gyors próba")').click();
+    await until(async () => (await toastText(page)).includes('token/mp'), 'nincs mérési eredmény', 20_000);
+    await until(async () => (await page.locator('#ollama-wizard tr', { hasText: 'Qwen3.5 4B' }).textContent()).includes('(mért)'), 'a becslés nem lett mért');
+  });
+  await check('letöltött modellek: a régi modell „elavult”, és frissítés nélkül törölhető', async () => {
+    const row = page.locator('#installed-models tr', { hasText: 'llama3.2:1b' });
+    assert((await row.textContent()).includes('elavult'), 'nincs elavult jelölés');
+    // the successor (qwen3.5:4b) was downloaded above, so the offer is to switch to it; otherwise to download it
+    assert(/Frissítés: qwen3\.5:4b|Átállás: qwen3\.5:4b/.test(await row.textContent()), 'nincs frissítés / átállás gomb az utódra');
+    dialogAnswers.push(true);
+    await row.locator('button:has-text("Törlés")').click();
+    await until(async () => (await toastText(page)).includes('Törölve: llama3.2:1b'), 'nincs törlés visszajelzés');
+    await until(async () => (await page.locator('#installed-models tr', { hasText: 'llama3.2:1b' }).count()) === 0, 'a modell a listában maradt');
+    await shot(page, '10d-modellek');
+  });
+
+  await section('10. Teljesítmény oldal');
+  await check('Teljesítmény: kártyák, élő grafikon, betöltött AI-modell és sebesség', async () => {
+    await go(page, '#/teljesitmeny');
+    await page.waitForSelector('#page >> text=Feldolgozási sebesség');
+    const cards = await page.textContent('.grid-cards');
+    for (const label of ['PROCESSZOR', 'MEMÓRIA', 'VIDEÓKÁRTYA', 'AI MODELL']) assert(cards.toUpperCase().includes(label), `hiányzik: ${label}`);
+    assert(/\d+%/.test(cards), 'nincs százalékos érték');
+    await until(async () => (await page.locator('svg.chart polyline').count()) > 0, 'nem rajzolódott ki a grafikon', 15_000, 500);
+    await until(async () => (await page.textContent('.grid-cards')).includes('processzoron fut'), 'nem látszik, hol fut a modell', 15_000, 500);
+    assert((await page.locator('#page table tbody tr').count()) > 0, 'nincs feldolgozott levél a sebesség-táblázatban');
+    await shot(page, '10e-teljesitmeny');
+  });
+
+  await section('11. Napló');
   await check('a napló mutatja a feldolgozásokat; a szűrők kompakt méretűek', async () => {
     await go(page, '#/naplo');
     await until(async () => (await page.locator('.log-line').count()) > 5, 'kevés naplósor');
@@ -606,10 +654,10 @@ try {
     }, 'nem csak hibák látszanak');
   });
 
-  await section('11. Akadálymentesség, elrendezés, sötét mód, telefon');
+  await section('12. Akadálymentesség, elrendezés, sötét mód, telefon');
   await check('egyik oldalon sem jelenik meg „null” vagy „undefined” szöveg', async () => {
     const bad = [];
-    for (const hash of ['#/attekintes', '#/szabalyok', '#/tesztkonzol', '#/beallitasok']) { // the log shows data, not UI text
+    for (const hash of ['#/attekintes', '#/szabalyok', '#/tesztkonzol', '#/teljesitmeny', '#/beallitasok']) { // the log shows data, not UI text
       await go(page, hash);
       await page.waitForTimeout(800);
       const text = await page.evaluate(() => document.getElementById('page').innerText);
@@ -619,7 +667,7 @@ try {
   });
   await check('minden látható mezőnek és gombnak van neve', async () => {
     const bad = [];
-    for (const hash of ['#/attekintes', '#/szabalyok', '#/tesztkonzol', '#/beallitasok', '#/naplo']) {
+    for (const hash of ['#/attekintes', '#/szabalyok', '#/tesztkonzol', '#/teljesitmeny', '#/beallitasok', '#/naplo']) {
       await go(page, hash);
       for (const b of await unlabelledControls(page)) bad.push(`${hash}: ${b}`);
     }
@@ -636,7 +684,7 @@ try {
         const bg = await p.evaluate(() => getComputedStyle(document.body).backgroundColor);
         assert(/rgb\((\d+), (\d+), (\d+)\)/.exec(bg).slice(1).every((c) => Number(c) < 60), `a háttér nem sötét: ${bg}`);
       }
-      for (const [hash, name] of [['#/attekintes', 'attekintes'], ['#/szabalyok', 'szabalyok'], ['#/tesztkonzol', 'tesztkonzol'], ['#/beallitasok', 'beallitasok'], ['#/naplo', 'naplo']]) {
+      for (const [hash, name] of [['#/attekintes', 'attekintes'], ['#/szabalyok', 'szabalyok'], ['#/tesztkonzol', 'tesztkonzol'], ['#/teljesitmeny', 'teljesitmeny'], ['#/beallitasok', 'beallitasok'], ['#/naplo', 'naplo']]) {
         await go(p, hash);
         await p.waitForTimeout(300);
         await noHorizontalOverflow(p, hash);
@@ -646,7 +694,7 @@ try {
     });
   }
 
-  await section('12. Kijelentkezés és kilépés');
+  await section('13. Kijelentkezés és kilépés');
   await check('kijelentkezés után a belső oldalak nem érhetők el', async () => {
     await page.click('#logout');
     await page.waitForSelector('#login:not([hidden])');

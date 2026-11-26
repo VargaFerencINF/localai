@@ -52,6 +52,13 @@ public sealed class JobDatabase
         ALTER TABLE jobs ADD COLUMN duration_ms INTEGER;
         CREATE INDEX ix_jobs_created ON jobs (created_at);
         """,
+        // 3: LLM usage per job (Teljesítmény page): tokens, generation speed, model
+        """
+        ALTER TABLE jobs ADD COLUMN prompt_tokens INTEGER;
+        ALTER TABLE jobs ADD COLUMN output_tokens INTEGER;
+        ALTER TABLE jobs ADD COLUMN tokens_per_sec REAL;
+        ALTER TABLE jobs ADD COLUMN llm_model TEXT;
+        """,
     ];
 
     private readonly string _connectionString;

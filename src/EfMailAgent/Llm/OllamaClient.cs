@@ -30,8 +30,11 @@ public sealed class OllamaClient(HttpClient httpClient, string baseUrl) : HttpLl
 
         var (body, duration) = await PostJsonAsync($"{BaseUrl}/api/chat", payload, request.Timeout, cancellationToken);
         var content = RequireString(body["message"]?["content"], "message.content");
+        var evalCount = (int?)body["eval_count"]?.GetValue<long>();
+        var evalNs = body["eval_duration"]?.GetValue<long>();
+        double? speed = evalCount is > 0 && evalNs is > 0 ? evalCount.Value / (evalNs.Value / 1e9) : null; // generation tokens per second
         return new LlmResponse(content, duration, body["model"]?.GetValue<string>(),
-            (int?)body["prompt_eval_count"]?.GetValue<long>(), (int?)body["eval_count"]?.GetValue<long>());
+            (int?)body["prompt_eval_count"]?.GetValue<long>(), evalCount, speed);
     }
 
     public override async Task<LlmHealth> CheckHealthAsync(CancellationToken cancellationToken)

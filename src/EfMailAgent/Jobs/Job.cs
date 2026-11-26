@@ -68,6 +68,10 @@ public sealed record Job
     public string? PromptUser { get; init; }
     public string? ParsedRows { get; init; }
     public long? DurationMs { get; init; }
+    public int? PromptTokens { get; init; }
+    public int? OutputTokens { get; init; }
+    public double? TokensPerSecond { get; init; }
+    public string? LlmModel { get; init; }
 }
 
 /// <summary>Final result of a job, written in one update.</summary>
@@ -79,4 +83,5 @@ public sealed record JobCompletion(
     string? OutputFile,
     int? RowCount,
     string? ParsedRows,
-    long? DurationMs);
+    long? DurationMs,
+    Llm.LlmUsage? Usage = null);

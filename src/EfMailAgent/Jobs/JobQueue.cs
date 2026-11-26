@@ -160,6 +160,30 @@ public sealed class JobQueue(JobDatabase database, TimeProvider? timeProvider = 
             ("$id", id), ("$error", reason), ("$next", nextAttemptAt?.UtcDateTime.ToString("O", CultureInfo.InvariantCulture)));
     }
 
+    public sealed record LlmUsageRow(string Id, string? Subject, string? Model, double? TokensPerSecond, int? PromptTokens, int? OutputTokens,
+        long? DurationMs, DateTimeOffset? FinishedAt, string Status);
+
+    /// <summary>The latest finished jobs with their LLM usage (Teljesítmény page, model advisor calibration).</summary>
+    public IReadOnlyList<LlmUsageRow> RecentLlmUsage(int limit)
+    {
+        using var connection = database.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT id, subject, llm_model, tokens_per_sec, prompt_tokens, output_tokens, duration_ms, finished_at, status
+            FROM jobs WHERE finished_at IS NOT NULL ORDER BY finished_at DESC LIMIT $limit
+            """;
+        command.Parameters.AddWithValue("$limit", limit);
+        using var r = command.ExecuteReader();
+        var rows = new List<LlmUsageRow>();
+        while (r.Read())
+        {
+            rows.Add(new LlmUsageRow(r.GetString(0), r.IsDBNull(1) ? null : r.GetString(1), r.IsDBNull(2) ? null : r.GetString(2),
+                r.IsDBNull(3) ? null : r.GetDouble(3), r.IsDBNull(4) ? null : r.GetInt32(4), r.IsDBNull(5) ? null : r.GetInt32(5),
+                r.IsDBNull(6) ? null : r.GetInt64(6), ParseDate(r.IsDBNull(7) ? null : r.GetString(7)), r.GetString(8)));
+        }
+        return rows;
+    }
+
     public void SavePrompt(string id, string system, string user, string? originalSender) =>
         Execute("UPDATE jobs SET prompt_system = $s, prompt_user = $u, original_sender = $o WHERE id = $id",
             ("$id", id), ("$s", system), ("$u", user), ("$o", originalSender));
@@ -168,12 +192,14 @@ public sealed class JobQueue(JobDatabase database, TimeProvider? timeProvider = 
         Execute("""
             UPDATE jobs SET status = $status, last_error = $error, raw_response = $raw, repair_response = $repair,
                             output_file = $output, row_count = $rows, parsed_rows = $parsed, duration_ms = $duration,
+                            prompt_tokens = $ptok, output_tokens = $otok, tokens_per_sec = $tps, llm_model = $model,
                             finished_at = $now, next_attempt_at = NULL
             WHERE id = $id
             """,
             ("$id", id), ("$status", completion.Status), ("$error", completion.Error), ("$raw", completion.RawResponse),
             ("$repair", completion.RepairResponse), ("$output", completion.OutputFile), ("$rows", completion.RowCount),
-            ("$parsed", completion.ParsedRows), ("$duration", completion.DurationMs));
+            ("$parsed", completion.ParsedRows), ("$duration", completion.DurationMs), ("$ptok", completion.Usage?.PromptTokens),
+            ("$otok", completion.Usage?.OutputTokens), ("$tps", completion.Usage?.TokensPerSecond), ("$model", completion.Usage?.Model));
 
     /// <summary>Manual re-run of a failed / needs_review job (API retry endpoint). Returns false for other states.</summary>
     public bool Requeue(string id)
@@ -250,6 +276,12 @@ public sealed class JobQueue(JobDatabase database, TimeProvider? timeProvider = 
             return r.IsDBNull(ordinal) ? null : r.GetInt64(ordinal);
         }
 
+        double? D(string name)
+        {
+            var ordinal = r.GetOrdinal(name);
+            return r.IsDBNull(ordinal) ? null : r.GetDouble(ordinal);
+        }
+
         return new Job
         {
             Id = S("id")!,
@@ -283,6 +315,10 @@ public sealed class JobQueue(JobDatabase database, TimeProvider? timeProvider = 
             PromptUser = S("prompt_user"),
             ParsedRows = S("parsed_rows"),
             DurationMs = L("duration_ms"),
+            PromptTokens = (int?)L("prompt_tokens"),
+            OutputTokens = (int?)L("output_tokens"),
+            TokensPerSecond = D("tokens_per_sec"),
+            LlmModel = S("llm_model"),
         };
     }
 

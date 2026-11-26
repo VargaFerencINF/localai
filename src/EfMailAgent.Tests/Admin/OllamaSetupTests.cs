@@ -41,7 +41,7 @@ public class OllamaSetupTests : IAsyncLifetime
         new RuntimeInfo { IsWindowsService = isService }, _platform,
         new OllamaSetupOptions { DownloadUrl = $"{_ollama.BaseUrl}/download/OllamaSetup.exe", StartWait = TimeSpan.FromSeconds(5),
             PollInterval = TimeSpan.FromMilliseconds(50), InstallSupported = installSupported },
-        NullLogger<OllamaSetupService>.Instance);
+        NullLogger<OllamaSetupService>.Instance, new FixedMetrics(), new EfMailAgent.Jobs.JobQueue(new EfMailAgent.Jobs.JobDatabase(_settings.DataDir), TimeProvider.System));
 
     private static async Task<OllamaTaskState> WaitAsync(OllamaSetupService service)
     {
@@ -61,7 +61,9 @@ public class OllamaSetupTests : IAsyncLifetime
         Assert.True(status["reachable"]!.GetValue<bool>());
         Assert.Equal("0.12.3", status["version"]!.GetValue<string>());
         Assert.Contains("qwen3.5:9b", status["models"]!.AsArray().Select(m => m!["name"]!.GetValue<string>()));
-        Assert.Contains(status["recommended"]!.GetValue<string>(), OllamaSetupService.Choices.Select(c => c.Name));
+        Assert.Equal("qwen3.5:9b", status["recommended"]!.GetValue<string>()); // 32 GB, no graphics card
+        Assert.Equal(32, status["ramGb"]!.GetValue<int>());
+        Assert.NotEmpty(status["advice"]!.AsArray());
         Assert.True(status["canInstall"]!.GetValue<bool>());
     }
 
@@ -76,13 +78,6 @@ public class OllamaSetupTests : IAsyncLifetime
         var ex = Assert.Throws<AdminRequestException>(() => Service(isService: true).StartInstall());
         Assert.Equal(409, ex.StatusCode);
     }
-
-    [Theory]
-    [InlineData(4, "qwen3.5:2b")]
-    [InlineData(8, "qwen3.5:4b")]
-    [InlineData(16, "qwen3.5:9b")]
-    [InlineData(32, "qwen3.5:9b")]
-    public void Recommendation_follows_the_memory(int ramGb, string expected) => Assert.Equal(expected, OllamaSetupService.Recommend(ramGb));
 
     [Fact]
     public async Task Pull_reports_progress_and_finishes_then_apply_switches_the_settings()
@@ -168,5 +163,71 @@ public class OllamaSetupTests : IAsyncLifetime
         public void TryStartOllama() { }
 
         public bool IsInstalled() => false;
+    }
+
+    [Fact]
+    public async Task Models_can_be_deleted_without_updating_and_the_used_one_only_with_a_switch()
+    {
+        _ollama.Models = ["qwen3:8b", "qwen3.5:9b", "llama3.2:3b"];
+        var service = Service();
+        service.Apply("qwen3:8b", _ollama.BaseUrl);
+
+        var status = Json(await service.StatusAsync(_ollama.BaseUrl, CancellationToken.None));
+        var old = status["models"]!.AsArray().Single(m => m!["name"]!.GetValue<string>() == "qwen3:8b")!;
+        Assert.Equal("qwen3.5:9b", old["successor"]!.GetValue<string>());
+        Assert.True(old["inUse"]!.GetValue<bool>());
+        Assert.True(old["successorInstalled"]!.GetValue<bool>());
+
+        // plain delete of an outdated model that is not in use: no update needed
+        var plain = await service.DeleteAsync(["llama3.2:3b"], null, _ollama.BaseUrl, CancellationToken.None);
+        Assert.Equal(["llama3.2:3b"], plain.Deleted);
+        Assert.Equal(5.0, plain.FreedGb);
+
+        // the model in use: refused without a switch target, deleted after switching
+        var refused = await Assert.ThrowsAsync<AdminRequestException>(() => service.DeleteAsync(["qwen3:8b"], null, _ollama.BaseUrl, CancellationToken.None));
+        Assert.Equal(409, refused.StatusCode);
+        Assert.Contains("qwen3:8b", _ollama.Models);
+        var switched = await service.DeleteAsync(["qwen3:8b"], "qwen3.5:9b", _ollama.BaseUrl, CancellationToken.None);
+        Assert.Equal("qwen3.5:9b", switched.SwitchedTo);
+        Assert.Equal("qwen3.5:9b", _settings.Settings.Llm.Model);
+        Assert.Equal(["qwen3.5:9b"], _ollama.Models);
+    }
+
+    [Fact]
+    public async Task Bulk_delete_reports_each_model()
+    {
+        _ollama.Models = ["a:1b", "b:2b", "c:3b"];
+        var result = await Service().DeleteAsync(["a:1b", "b:2b", "nincs:1b"], null, _ollama.BaseUrl, CancellationToken.None);
+
+        Assert.Equal(["a:1b", "b:2b"], result.Deleted);
+        Assert.Single(result.Errors);
+        Assert.Contains("nincs:1b", result.Errors[0]);
+        Assert.Equal(["c:3b"], _ollama.Models);
+        await Assert.ThrowsAsync<AdminRequestException>(() => Service().DeleteAsync([], null, _ollama.BaseUrl, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Quick_test_measures_the_speed_saves_it_and_the_advice_uses_it()
+    {
+        var service = Service();
+        var json = Json(await service.BenchmarkAsync("qwen3.5:9b", _ollama.BaseUrl, CancellationToken.None));
+
+        Assert.Equal(10, json["generationTokPerSec"]!.GetValue<double>());
+        Assert.Equal(100, json["promptTokPerSec"]!.GetValue<double>());
+        Assert.Equal(3000 / 100 + 600 / 10, json["secondsPerEmail"]!.GetValue<int>());
+        Assert.True(File.Exists(Path.Combine(_settings.DataDir, OllamaSetupService.BenchmarkFileName)));
+
+        var status = Json(await service.StatusAsync(_ollama.BaseUrl, CancellationToken.None));
+        var advice = status["advice"]!.AsArray().Single(a => a!["name"]!.GetValue<string>() == "qwen3.5:9b")!;
+        Assert.True(advice["measured"]!.GetValue<bool>());
+        Assert.Equal(90, advice["secondsPerEmail"]!.GetValue<int>());
+    }
+
+    private sealed class FixedMetrics : EfMailAgent.Hosting.ISystemMetrics
+    {
+        public EfMailAgent.Hosting.HardwareInfo Hardware() => new(32, "Intel(R) Core(TM) Ultra 7 155H", 22, [new("Intel(R) Arc(TM) Graphics", 0.1, false)], 200, "Windows 11");
+        public (double TotalGb, double AvailableGb)? Memory() => (32, 16);
+        public double? CpuPercent() => 10;
+        public double? GpuPercent() => null;
     }
 }

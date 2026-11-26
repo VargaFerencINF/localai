@@ -29,7 +29,8 @@ public sealed record ExtractionResult(
     string? RepairResponse,
     ValidationOutcome FirstValidation,
     ValidationOutcome? RepairValidation,
-    TimeSpan Duration)
+    TimeSpan Duration,
+    LlmUsage? Usage = null)
 {
     public ValidationOutcome Final => RepairValidation ?? FirstValidation;
 }
@@ -112,7 +113,7 @@ public sealed class JobProcessor(
         {
             // The parsed rows stay in the database (parsed_rows), so nothing is lost; a retry rewrites them.
             queue.Complete(job.Id, new JobCompletion(JobStatus.Failed, ex.Message, extraction.RawResponse, extraction.RepairResponse,
-                null, rows.Count, parsedRows, stopwatch.ElapsedMilliseconds));
+                null, rows.Count, parsedRows, stopwatch.ElapsedMilliseconds, extraction.Usage));
             _logger.LogError("Feldolgozás sikertelen: {JobId}, CSV hiba: {Error}", job.Id, ex.Message);
             return new ProcessResult(AttemptResult.Completed, JobStatus.Failed, ex.Message);
         }
@@ -121,7 +122,7 @@ public sealed class JobProcessor(
             ? $"A CSV fájl zárolva volt, a sorok ide kerültek: {written.FilePath}"
             : null;
         queue.Complete(job.Id, new JobCompletion(status, note, extraction.RawResponse, extraction.RepairResponse,
-            written?.FilePath, rows.Count, parsedRows, stopwatch.ElapsedMilliseconds));
+            written?.FilePath, rows.Count, parsedRows, stopwatch.ElapsedMilliseconds, extraction.Usage));
 
         _logger.LogInformation(
             "Feldolgozás kész: {JobId}, szabály {RuleId}, állapot {Status}, {RowCount} sor, {DurationMs} ms, javító hívás: {Repaired}, fájl: {OutputFile}",
@@ -148,7 +149,7 @@ public sealed class JobProcessor(
         var first = await llm.CompleteAsync(request, cancellationToken);
         var firstValidation = ResponseValidator.Validate(rule.Output, schema, first.Content);
         if (firstValidation.IsValid)
-            return new ExtractionResult(prompt, first.Content, null, firstValidation, null, stopwatch.Elapsed);
+            return new ExtractionResult(prompt, first.Content, null, firstValidation, null, stopwatch.Elapsed, LlmUsage.From(first));
 
         _logger.LogWarning("A modell válasza nem felel meg a sémának ({JobId}), javító hívás következik. Hibák: {Errors}",
             job?.Id, string.Join("; ", firstValidation.Errors.Take(5)));
@@ -160,7 +161,7 @@ public sealed class JobProcessor(
         };
         var repair = await llm.CompleteAsync(request with { Messages = repairMessages }, cancellationToken);
         var repairValidation = ResponseValidator.Validate(rule.Output, schema, repair.Content);
-        return new ExtractionResult(prompt, first.Content, repair.Content, firstValidation, repairValidation, stopwatch.Elapsed);
+        return new ExtractionResult(prompt, first.Content, repair.Content, firstValidation, repairValidation, stopwatch.Elapsed, LlmUsage.From(first, repair));
     }
 
     public static string BuildRepairMessage(IReadOnlyList<string> errors) =>
