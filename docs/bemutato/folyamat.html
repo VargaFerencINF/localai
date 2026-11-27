@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="hu">
+<head>
+<meta charset="utf-8">
+<title>EfMailAgent folyamat</title>
+<script src="https://cdn.jsdelivr.net/npm/roughjs@4.6.6/bundled/rough.js"></script>
+<style>
+  :root { --black: #23252b; --blue: #1d4fa8; --red: #c62f28; --green: #23804a; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    width: 1920px; height: 1080px; overflow: hidden; position: relative;
+    background: #fdfdfb;
+    background-image:
+      radial-gradient(ellipse 520px 160px at 78% 14%, rgba(120,130,150,.07), transparent 70%),
+      radial-gradient(ellipse 700px 200px at 22% 88%, rgba(120,130,150,.06), transparent 70%),
+      radial-gradient(ellipse 400px 120px at 55% 52%, rgba(29,79,168,.035), transparent 70%);
+    font-family: Inter, "Liberation Sans", sans-serif; color: var(--black);
+  }
+  #ink { position: absolute; inset: 0; pointer-events: none; }
+  .abs { position: absolute; }
+
+  h1 { font-weight: 800; font-size: 54px; letter-spacing: -0.5px; line-height: 1; left: 60px; top: 30px; }
+  .subtitle { left: 62px; top: 104px; font-size: 23px; color: var(--blue); }
+
+  .box { width: 236px; height: 150px; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; padding: 10px 14px; }
+  .box .t { font-weight: 700; font-size: 25px; line-height: 1.12; }
+  .box .s { font-size: 17.5px; line-height: 1.3; margin-top: 8px; color: #50545e; }
+  .n { font-weight: 800; font-size: 30px; color: var(--blue); width: 46px; text-align: center; }
+
+  .notes { width: 262px; font-size: 19.5px; line-height: 1.35; color: var(--blue); }
+  .notes p { margin-bottom: 8px; padding-left: 16px; text-indent: -16px; }
+  .notes p::before { content: "– "; }
+  .notes b { font-weight: 700; }
+
+  .ai .t { color: var(--red); }
+  .times { font-size: 18px; line-height: 1.2; color: var(--black); border-collapse: collapse; }
+  .times td { padding: 7px 6px 7px 0; vertical-align: middle; }
+  .times .h { font-size: 14.5px; color: #50545e; white-space: nowrap; }
+  .times .lbl { white-space: nowrap; font-size: 17px; line-height: 1.05; padding-right: 8px; }
+  .times td.h { text-align: center; line-height: 1.05; }
+  .times td.big { text-align: center; padding: 6px 6px; }
+  .big { font-weight: 800; font-size: 25px; white-space: nowrap; }
+  .cpu { color: var(--red); } .gpu { color: var(--green); }
+
+  .sec { font-size: 22.5px; line-height: 1.45; }
+  .sec h3 { font-weight: 800; font-size: 31px; line-height: 1.1; margin-bottom: 12px; }
+  .sec p { padding-left: 20px; text-indent: -20px; margin-bottom: 3px; }
+  .ok::before { content: "✓ "; color: var(--green); font-weight: 700; }
+  .bad::before { content: "✗ "; color: var(--red); font-weight: 700; }
+  .dash::before { content: "→ "; color: var(--blue); }
+
+  .sticky { background: #fff27a; padding: 22px 24px 20px; transform: rotate(-2deg); box-shadow: 1px 3px 6px rgba(0,0,0,.16); }
+  .sticky h3 { margin-bottom: 10px; }
+  .sign { right: 60px; bottom: 22px; font-size: 16px; color: #8b8f99; }
+</style>
+</head>
+<body>
+<svg id="ink" width="1920" height="1080"></svg>
+
+<h1 class="abs" id="title">EfMailAgent: e-mailből kész táblázat, helyi AI-val</h1>
+<div class="abs subtitle">vevői előrendelés szabad szövegben &nbsp;→&nbsp; soronkénti táblázat az ERP-nek · kézi gépelés nélkül · az adat a cégnél marad</div>
+
+<div class="abs box" id="b1" style="left:60px; top:190px"><div class="t">Bejövő e-mail</div><div class="s">kolléga továbbítja a rendelést a közös postafiókba</div></div>
+<div class="abs box" id="b2" style="left:370px; top:190px"><div class="t">Thunderbird + bővítmény</div><div class="s">figyeli a postafiókot, kiválogatja a rendeléseket</div></div>
+<div class="abs box" id="b3" style="left:680px; top:190px"><div class="t">EfMailAgent</div><div class="s">Windows szolgáltatás a szerveren, saját kezelőfelülettel</div></div>
+<div class="abs box ai" id="b4" style="left:990px; top:190px; width:290px"><div class="t">Helyi AI modell</div><div class="s">Ollama + qwen3.5:9b<br>a saját gépen fut</div></div>
+<div class="abs box" id="b5" style="left:1354px; top:190px; width:220px"><div class="t">Ellenőrzés</div><div class="s">a program átnézi az AI válaszát</div></div>
+<div class="abs box" id="b6" style="left:1648px; top:190px; width:220px"><div class="t">CSV → ERP</div><div class="s">Excelben nyitható, importálható</div></div>
+
+<div class="abs n" style="left:52px; top:150px">1</div>
+<div class="abs n" style="left:362px; top:150px">2</div>
+<div class="abs n" style="left:672px; top:150px">3</div>
+<div class="abs n" style="left:982px; top:150px; color:var(--red)">4</div>
+<div class="abs n" style="left:1346px; top:150px">5</div>
+<div class="abs n" style="left:1640px; top:150px">6</div>
+
+<div class="abs notes" style="left:62px; top:372px; width:240px">
+  <p>szabad szöveg, <b>nincs sablon</b></p>
+  <p>táblázat, felsorolás, levélváltás – mindegy</p>
+  <p>magyar, szlovák, német is</p>
+</div>
+<div class="abs notes" style="left:372px; top:372px; width:250px">
+  <p>tárgy alapján szűr („előrendelés”)</p>
+  <p>címkéz: sorban / kész / ellenőrzendő / hiba</p>
+  <p>újraindulás után pótolja a kimaradt leveleket</p>
+</div>
+<div class="abs notes" style="left:682px; top:372px; width:250px">
+  <p>szabály dönti el, mit kell kinyerni</p>
+  <p><b>egyesével, sorban</b> dolgoz fel – semmi nem vész el</p>
+  <p>beállítás programozó nélkül</p>
+</div>
+<div class="abs" style="left:992px; top:366px; width:356px">
+  <div style="font-size:18px; color:var(--green); font-weight:700; margin-bottom:8px; line-height:1.3">az e-mail nem megy ki a felhőbe,<br>nincs AI-előfizetés</div>
+  <table class="times">
+    <tr><td></td><td class="h cpu">laptop<br>mért</td><td class="h gpu">videókártya<br>becslés</td></tr>
+    <tr><td class="lbl">rövid levél<br><span class="h">2–6 tétel</span></td><td class="big cpu">2–3 perc</td><td class="big gpu">20–40 mp</td></tr>
+    <tr><td class="lbl">nagy levél<br><span class="h">50 tétel</span></td><td class="big cpu"><span id="c24">~24 perc</span></td><td class="big gpu">~3–5 perc</td></tr>
+  </table>
+  <div style="font-size:14.5px; color:#50545e; margin-top:4px">videókártya: pl. RTX 3060 12 GB</div>
+</div>
+<div class="abs notes" style="left:1356px; top:372px; width:236px">
+  <p>formai hibát magától javít</p>
+  <p><b>nem talál ki adatot</b> (pl. árat)</p>
+  <p>bizonytalan sor → „ellenőrzendő”, ember nézi át</p>
+</div>
+<div class="abs notes" style="left:1650px; top:372px; width:230px">
+  <p>1 sor = 1 tétel: partner, cikk, mennyiség, egység, ár, dátum, megjegyzés</p>
+  <p>havi fájl vagy rendelésenként külön</p>
+</div>
+
+<div class="abs sec sticky" style="left:70px; top:716px; width:470px">
+  <h3>Éles próba: 50 tétel</h3>
+  <p class="ok">53/53 tétel felismerve</p>
+  <p class="ok">mennyiség, ár, dátum ~98%-ban pontos</p>
+  <p class="ok">„két tucat”, „ugyanannyi”, utólagos módosítás – jó</p>
+</div>
+<div class="abs sec" style="left:620px; top:718px; width:390px">
+  <h3>Még javítani kell</h3>
+  <p class="bad">törölt tételt 0 db-bal felveszi</p>
+  <p class="bad">cikkszám nem mindig külön oszlopban</p>
+  <p class="bad">kevés sort jelöl ellenőrzendőnek</p>
+</div>
+<div class="abs sec" style="left:1070px; top:718px; width:460px">
+  <h3>Következő lépések</h3>
+  <p class="dash"><b>videókártya</b> → kb. 5× gyorsabb</p>
+  <p class="dash"><b>cikktörzs-egyeztetés</b> ERP-exportból – 20&nbsp;000 cikk között a program keres</p>
+  <p class="dash">cikkszám-felismerés finomítása</p>
+</div>
+<div class="abs sec" style="left:1570px; top:718px; width:300px">
+  <h3>Miért éri meg?</h3>
+  <p class="dash">nincs kézi begépelés</p>
+  <p class="dash">az adat helyben marad</p>
+  <p class="dash">nincs futási díj</p>
+</div>
+<div class="abs sign">EfMailAgent · 2026. november</div>
+
+<script>
+document.fonts.ready.then(() => {
+  const svg = document.getElementById('ink');
+  const rc = rough.svg(svg);
+  const r = id => document.getElementById(id).getBoundingClientRect();
+  const add = n => svg.appendChild(n);
+  const black = { stroke: '#23252b', strokeWidth: 2.6, roughness: 1.4, bowing: 1.2 };
+
+  for (let i = 1; i <= 6; i++) {
+    const b = r('b' + i);
+    add(rc.rectangle(b.left, b.top, b.width, b.height, i === 4 ? { ...black, stroke: '#c62f28', strokeWidth: 3.4, seed: i } : { ...black, seed: i }));
+  }
+  for (let i = 1; i < 6; i++) {
+    const a = r('b' + i), b = r('b' + (i + 1));
+    const y = a.top + a.height / 2 + (i % 2 ? -4 : 5);
+    const x1 = a.right + 8, x2 = b.left - 10;
+    add(rc.curve([[x1, y], [(x1 + x2) / 2, y - 6], [x2, y + 1]], { ...black, strokeWidth: 2.4, seed: 20 + i }));
+    add(rc.linearPath([[x2 - 14, y - 10], [x2, y + 1], [x2 - 13, y + 12]], { ...black, strokeWidth: 2.4, seed: 30 + i }));
+  }
+  const c = r('c24');
+  add(rc.ellipse(c.left + c.width / 2, c.top + c.height / 2 + 2, c.width + 20, c.height + 14, { stroke: '#c62f28', strokeWidth: 2.4, roughness: 1.6, seed: 7 }));
+  const t = r('title');
+  add(rc.line(t.left + 4, t.bottom + 9, t.right, t.bottom + 6, { stroke: '#1d4fa8', strokeWidth: 3, roughness: 1.8, seed: 3 }));
+  add(rc.line(70, 672, 1850, 676, { stroke: '#9aa0ab', strokeWidth: 1.6, roughness: 2.2, seed: 11 }));
+  document.body.dataset.done = '1';
+});
+</script>
+</body>
+</html>
